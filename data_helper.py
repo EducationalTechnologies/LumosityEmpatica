@@ -23,7 +23,7 @@ def read_data_files(sessions, ignore_files=None):
     # for each session in the list of sessions
     for s in sessions:
         # 1. Reading data from zip file
-        print("Processing session: "+s)
+        print("Processing session: " + s)
         with zipfile.ZipFile(s) as z:
             # get current absolute time in seconds. This is necessary to add the delta correctly
             for info in z.infolist():
@@ -47,7 +47,7 @@ def read_data_files(sessions, ignore_files=None):
                                 df = sensor_file_to_array(data, current_time_offset)
                                 # Concatenate this dataframe in the dfALL and then sort dfALL by index
                                 df_all = pd.concat([df_all, df], ignore_index=False, sort=False).sort_index()
-                                df_all = df_all.apply(pd.to_numeric,errors='ignore').fillna(method='bfill')
+                                df_all = df_all.apply(pd.to_numeric, errors='ignore').fillna(method='bfill')
     return df_all, df_ann
 
 
@@ -57,7 +57,7 @@ def read_data_files(sessions, ignore_files=None):
 # OUT: concatenated data frame df_all
 def sensor_file_to_array(data, offset):
     # concatenate the data with the intervals normalized and drop attribute 'frames'
-    framesKey= 'frames'
+    framesKey = 'frames'
     if 'Frames' in data:
         framesKey = 'Frames'
     applicationNameKey = 'applicationName'
@@ -91,7 +91,7 @@ def sensor_file_to_array(data, offset):
         df = df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
 
         # Keep the numeric types only (categorical data are not supported now)
-        if (app_name!="Feedback"):
+        if (app_name != "Feedback"):
             df = df.select_dtypes(include=['float64', 'int64'])
         # Remove columns in which the sum of attributes is 0 (meaning there the information is 0)
         df = df.loc[:, (df.sum(axis=0) != 0)]
@@ -152,24 +152,28 @@ def tensor_transform(df_all, df_ann, res_rate, to_exclude=None):
     ]
     # What is interval_max for?
     interval_max = 0
-    #print(masked_df)
-    new_masked_df = []
+    i_counter = -1
+    interval_todelete = list()
     for dt in masked_df:
-        if dt.index.size>0:
+        i_counter = i_counter + 1
+        if dt.index.size > 0:
             delta = np.timedelta64(dt.index[-1] - dt.index[0], 'ms') / np.timedelta64(1, 'ms')
             if delta > interval_max:
                 interval_max = delta
-            new_masked_df.append(dt)
         else:
-            print('Detected dt.index is of size 0, excluded from the list.')
-    # This results in different length of entries
-    df_resampled = [dt.resample(str(res_rate) + 'ms').first() if not dt.empty else None for dt in new_masked_df]
+            #print('Interval '+str(i_counter)+' without data, excluded from the list.')
+            interval_todelete.append(i_counter)
 
-    #median_signal_length = int(np.median([len(l) for l in df_resampled]))
-    median_signal_length = int(np.median([len(l) for l in df_resampled]))
+    if len(interval_todelete)>0:
+        print('Deleted the following intervals without data: '+str(interval_todelete))
+        df_ann_validated = df_ann.reset_index().drop(df_ann.index[interval_todelete]) # Drop a row by index
+
+    # This results in different length of entries
+    df_resampled = [dt.resample(str(res_rate) + 'ms').first() if not dt.empty else None for dt in masked_df]
+    median_signal_length = int(np.median([0 if l is None else len(l) for l in df_resampled]))
     print(f"Median signal length: {median_signal_length}")
     df_tensor = create_batches(df_resampled, median_signal_length)
-    return df_tensor
+    return df_tensor, df_ann_validated, df_all.columns
 
 
 # create a dummy ndarray with same size
@@ -177,13 +181,14 @@ def tensor_transform(df_all, df_ann, res_rate, to_exclude=None):
 def create_batches(df, bin_size):
     batch = np.empty([bin_size, np.shape(df[0])[1]], dtype=float)
     for dfs in df:
-        if np.shape(dfs)[0] < bin_size:
-            interval = np.pad(dfs.fillna(method='ffill').fillna(method='bfill'),
-                              ((0, bin_size - np.shape(dfs)[0]), (0, 0)), 'edge')
-        elif np.shape(dfs)[0] >= bin_size:
-            interval = dfs.iloc[:bin_size].fillna(method='ffill').fillna(method='bfill')
-        # if not np.isnan(np.array(interval)).any():
-        batch = np.dstack((batch, np.array(interval)))
+        if not dfs is None:
+            if np.shape(dfs)[0] < bin_size:
+                interval = np.pad(dfs.fillna(method='ffill').fillna(method='bfill'),
+                                  ((0, bin_size - np.shape(dfs)[0]), (0, 0)), 'edge')
+            elif np.shape(dfs)[0] >= bin_size:
+                interval = dfs.iloc[:bin_size].fillna(method='ffill').fillna(method='bfill')
+            # if not np.isnan(np.array(interval)).any():
+            batch = np.dstack((batch, np.array(interval)))
     batch = batch[:, :, 1:].swapaxes(2, 0).swapaxes(1, 2)  # (197, 11, 59)
     print(("The shape of the batch is " + str(batch.shape)))
     print(('Batch is containing nulls? ' + str(np.isnan(batch).any())))
@@ -192,6 +197,7 @@ def create_batches(df, bin_size):
 
 
 def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None):
+    attributes = []
     # get the sensor data and annotation files (if exist)
     if ignore_files is None:
         ann_name = f"{folder}/annotations.pkl"
@@ -211,18 +217,14 @@ def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None)
             raise FileNotFoundError(f"No recording sessions found in {folder}")
         sensor_data, annotations = read_data_files(sessions, ignore_files=ignore_files)
 
-        # TODO this is a workaround and only works for the CPR dataset!!!
-        #annotations = annotations.loc[
-        #    ~((annotations.armsLocked == 1) & (annotations.bodyWeight == 1) & (annotations.classDepth == 0))]
-
         # Transform sensor_data to tensor_data and save it
-        tensor_data = tensor_transform(sensor_data, annotations, res_rate=res_rate, to_exclude=to_exclude)
+        tensor_data, annotations, attributes = tensor_transform(sensor_data, annotations, res_rate=res_rate, to_exclude=to_exclude)
         with open(ann_name, "wb") as f:
             pickle.dump(annotations, f)
         with open(sensor_name, "wb") as f:
             pickle.dump(tensor_data, f)
 
-    return tensor_data, annotations
+    return tensor_data, annotations, attributes
 
 
 def get_feedback_from_files(folder, ignore_files=None):
@@ -234,7 +236,8 @@ def get_feedback_from_files(folder, ignore_files=None):
     return feedback_data, annotations
 
 
-def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0.85, ignore_files=None, to_exclude=None):
+def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0.85, ignore_files=None,
+                              to_exclude=None):
     if new_folder_location is None:
         new_folder_location = data
     # Train and test data is chosen randomly
@@ -243,7 +246,7 @@ def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0
     tensor_data = tensor_transform(sensor_data, annotations, res_rate=25, to_exclude=to_exclude)
     # mask with train_test_ratio*len(annotations) amount of ones
     train_mask = np.zeros(len(annotations), dtype=int)
-    train_mask[:int(len(annotations)*train_test_ratio)] = 1
+    train_mask[:int(len(annotations) * train_test_ratio)] = 1
     np.random.shuffle(train_mask)
     train_mask = train_mask.astype(bool)
 
@@ -270,5 +273,3 @@ def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0
         pickle.dump(test_annotations, f)
     with open(f'{new_folder_location}/test/{sensor_name}', "wb") as f:
         pickle.dump(test_sensor_data, f)
-
-
