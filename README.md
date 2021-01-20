@@ -12,7 +12,7 @@ It uses the MLT-JSON sensor format and it's based on https://github.com/dimstudi
 
 ## How to start
 1. Create a new folder in ther root called `manual_sessions`
-2. Add a dataset (zip sessions) in new folder `manual_sessions/lumosity-empatica`
+2. Add a dataset (zip sessions) in new folder `manual_sessions/lumosity-dataset`
 3. Run `analysis.py`
 
 Please note: the first time you run the analysis, the dataset will be loaded and converted and two .pkl file will be created in the same folder of the sessions.in this way, the dataset doesn't need to be loaded and converted for the following times. Simply deleted the two .pkl to reload and reconvert the sessions. 
