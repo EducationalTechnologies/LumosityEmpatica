@@ -1,5 +1,8 @@
 import data_helper
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 
 train_folder = "manual_sessions/lumosity-dataset"
 ignore_files = []
@@ -18,6 +21,7 @@ tabular_representation = annotations[['recordingID', 'mistake', 'end', 'start', 
 # BVP
 # matrix BVP tensor_data[:,:,0]
 tabular_representation['BVP_std'] = np.std(tensor_data[:,:,0],axis=1)
+#print(tabular_representation['BVP_std'])
 
 # GSP
 # matrix GSR tensor_data[:,:,1]
@@ -36,4 +40,36 @@ tabular_representation['IBI_mean'] = np.mean(tensor_data[:,:,3],axis=1)
 tabular_representation['TMP_mean'] = np.mean(tensor_data[:,:,4],axis=1)
 
 # Temperature column
-print(tabular_representation)
+#print(tabular_representation)
+
+
+#############################################################################################################
+#Tanjas code changing
+
+# select the first interval
+#print(tabular_representation.loc[0,:])
+# select the first 3 intervals
+#print(tabular_representation.loc[0:2,:])
+# selecting data of the participant a4
+#tabular_representation.loc[tabular_representation['recordingID'] == 'a4'
+
+#setting diagram size
+rc={'axes.labelsize': 10, 'font.size': 10, 'legend.fontsize': 10.0, 'axes.titlesize': 15 , "figure.figsize" : (8.27, 11.69)}
+plt.rcParams.update(**rc)
+
+list_of_participants = ['a4','c4','h4','j4','k4']
+#list_of_participants = ['h4'] #Empty DataFrame -> empty graph
+#creating diagrams of pairslots for every participant
+def create_diagram(list_of_participants):
+    for i in list_of_participants:
+        participant = tabular_representation.loc[tabular_representation['recordingID'] == i]
+        s = sns.pairplot(participant)
+        #s = sns.pairplot(participant, palette='Dark2') #colourfull diagram
+        #s = sns.pairplot(participant, kind = 'reg')  #coloutfull diagram
+        plt.suptitle('Participant_' + i, color='red', fontsize=22)
+        fig = plt.gcf() #get current figure
+        fig.tight_layout()
+        #plt.show()
+        plt.savefig('Participant_' + i + '.png', dpi = 400)
+
+create_diagram(list_of_participants)
