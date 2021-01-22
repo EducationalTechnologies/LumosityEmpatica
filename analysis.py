@@ -1,8 +1,15 @@
 import data_helper
 import numpy as np
 import seaborn as sns
+import pandas as pd
 import matplotlib.pyplot as plt
-
+import sklearn
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn import metrics
+from sklearn import datasets
+from sklearn import linear_model
+#from sklearn.datasets import load_iris
 
 train_folder = "manual_sessions/lumosity-dataset"
 ignore_files = []
@@ -54,6 +61,7 @@ np_list_of_participants = tabular_representation['recordingID'].unique()
 list_of_participants = np_list_of_participants.tolist()
 list_of_participants.append('all') #for creating summary graph
 
+
 #creating graphs of pairslots for every participant and summary graph
 def create_diagram(list_of_participants):
     for i in list_of_participants:
@@ -69,4 +77,38 @@ def create_diagram(list_of_participants):
         # plt.show()
         plt.savefig('plots/Participant_' + i + '.png', dpi=400)
 
-create_diagram(list_of_participants)
+#create_diagram(list_of_participants) #Error if you load many zip-files...
+
+
+
+list_of_attributes = ['BVP_std','GSR_mean','HRV_mean','IBI_mean','TMP_mean']
+
+#regression model creating, y is 'mistake'
+def regression_model(list_of_attributes):
+    j = 5
+    for i in list_of_attributes:
+        print(" ")
+        print ("Regression of", i, "on mistake")
+        tabular_representation.plot(x=i, y='mistake' , style='o')
+        plt.title("Graph: " + i + " and mistakes")
+        plt.xlabel(i)
+        plt.ylabel('Mistake')
+        plt.show()
+        y = tabular_representation.iloc[:, 1].values  # mistake column values
+        x = tabular_representation.iloc[:,j].values
+        regressor = LinearRegression()
+        x = x.reshape(-1, 1)
+        y = y.reshape(-1, 1)
+        LRG = regressor.fit(x, y)
+        #y_pred = regressor.predict(x)
+        print("Regression coefficient:", regressor.coef_[0])
+        print("Intercept:", regressor.intercept_)
+        print("Score:", LRG.score(x, y))
+        #print(tabular_representation.iloc[:, j])
+        print(" ")
+        j += 1
+
+regression_model(list_of_attributes)
+#Error by some of participants because of empty values in tabular_representation
+#print(tabular_representation.loc[220:250,:]) #like by participant d4
+#d4 has none HRV, IBI sometimes because only the first 20 seconds of IBI were saved...
