@@ -5,11 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import sklearn
 from sklearn.linear_model import LinearRegression
-#from sklearn.model_selection import train_test_split
-#from sklearn import metrics
-#from sklearn import datasets
-#from sklearn import linear_model
-#from sklearn.datasets import load_iris
 
 train_folder = "manual_sessions/lumosity-dataset"
 ignore_files = []
@@ -83,6 +78,7 @@ def create_diagram(list_of_participants):
 
 list_of_attributes = ['BVP_std','GSR_mean','HRV_mean','IBI_mean','TMP_mean']
 
+
 def regression_model(list_of_attributes):
     j = 5
     for i in list_of_attributes:
@@ -109,8 +105,6 @@ def regression_model(list_of_attributes):
         j += 1
 
 regression_model(list_of_attributes)
-
-#regression_model(list_of_attributes)
 #Error by some of participants because of empty values in tabular_representation
 #print(tabular_representation.loc[220:250,:]) #like by participant d4
 #d4 has none HRV, IBI sometimes because only the first 20 seconds of IBI were saved...
