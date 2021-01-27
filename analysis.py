@@ -28,7 +28,7 @@ tabular_representation = annotations[['recordingID', 'mistake', 'end', 'start', 
 
 # BVP
 # matrix BVP tensor_data[:,:,0]
-tabular_representation['BVP_std'] = np.std(tensor_data[:,:,0],axis=1)
+tabular_representation['BVP_std'] = np.mean(tensor_data[:,:,0],axis=1)
 #print(tabular_representation['BVP_std'])
 
 # GSP
