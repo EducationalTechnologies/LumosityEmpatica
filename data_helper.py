@@ -224,6 +224,7 @@ def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None)
         with open(sensor_name, "wb") as f:
             pickle.dump(tensor_data, f)
 
+    annotations = annotations.reset_index(drop=True)
     return tensor_data, annotations, attributes
 
 
