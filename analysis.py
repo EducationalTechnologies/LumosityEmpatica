@@ -1,27 +1,23 @@
 import data_helper
-import feature_extraction
+
 import numpy as np
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
-import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.linear_model import Perceptron
 from sklearn.linear_model import LogisticRegression
 from sklearn import metrics
-import os
 from sklearn.metrics import confusion_matrix
 from feature_extraction import extract_df_with_features
+from feature_selection import select_features
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import RepeatedStratifiedKFold
-from sklearn.feature_selection import RFECV
+from sklearn.preprocessing import MinMaxScaler
+
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-
 
 if __name__ == "__main__":
     train_folder = "manual_sessions/lumosity-dataset"
@@ -37,22 +33,25 @@ if __name__ == "__main__":
     print("Shape of the tensor_data is: " + str(np.shape(tensor_data)))
     print("Shape of the annotation is: " + str(np.shape(annotations)))
     attributes = ['bvp', 'gsr', 'hrv', 'ibi', 'tmp']
-    tabular_representation = extract_df_with_features(tensor_data, annotations, attributes, target_classes)
-    #for col in tabular_representation.columns:
-        #print(col)
+    tabular_representation = extract_df_with_features(tensor_data, annotations, attributes, target_classes,
+                                                      train_folder)
+    # for col in tabular_representation.columns:
+    # print(col)
 
     #############################################################################################################
-    #Tanjas code changing
+    # Tanjas code changing
 
-    #setting graphs size
-    rc={'axes.labelsize': 10, 'font.size': 10, 'legend.fontsize': 10.0, 'axes.titlesize': 15 , "figure.figsize" : (8.27, 11.69)}
+    # setting graphs size
+    rc = {'axes.labelsize': 10, 'font.size': 10, 'legend.fontsize': 10.0, 'axes.titlesize': 15,
+          "figure.figsize": (8.27, 11.69)}
     plt.rcParams.update(**rc)
 
     np_list_of_participants = tabular_representation['recordingID'].unique()
     list_of_participants = np_list_of_participants.tolist()
-    list_of_participants.append('all') #for creating summary graph
+    list_of_participants.append('all')  # for creating summary graph
 
-    #creating graphs of pairslots for every participant and summary graph
+
+    # creating graphs of pairslots for every participant and summary graph
     def create_diagram(list_of_participants):
         for i in list_of_participants:
             participant = tabular_representation.loc[tabular_representation['recordingID'] == i]
@@ -67,25 +66,26 @@ if __name__ == "__main__":
             # plt.show()
             plt.savefig('plots/Participant_' + i + '.png', dpi=400)
 
-    #create_diagram(list_of_participants) #Error if you load many zip-files...
 
+    # create_diagram(list_of_participants) #Error if you load many zip-files...
 
-    #list_of_attributes = ['BVP_std','GSR_mean','HRV_mean','IBI_mean','TMP_mean']
-    list_of_attributes = tabular_representation.columns[~tabular_representation.columns.isin(target_classes + ['recordingID'])][:20]
+    list_of_attributes = tabular_representation.drop(['mistake', 'recordingID'], axis=1).columns
+
 
     def regression_model(list_of_attributes):
         X = tabular_representation[list_of_attributes]
         y = tabular_representation['mistake']
-        X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.25,random_state=0) #splitting the Data set into the Training Set and Test Set
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25,
+                                                            random_state=0)  # splitting the Data set into the Training Set and Test Set
         regressor = LogisticRegression()
-        regressor.fit(X_train,y_train)
+        regressor.fit(X_train, y_train)
         y_pred = regressor.predict(X_test)
         score = regressor.score(X_test, y_test)
 
-        #creating confusion matrix
+        # creating confusion matrix
         cm = metrics.confusion_matrix(y_test, y_pred)
         plt.figure(0)
-        sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square = True, cmap = 'Blues_r');
+        sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square=True, cmap='Blues_r');
         plt.title('Accuracy Score: {0}'.format(score))
         plt.ylabel('Actual');
         plt.xlabel('Predicted');
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         plt.savefig('confusion_matrix_and_ROC_Curve/confusion_matrix.png')
         print('Score:', score)
 
-        #creating ROC Curve
+        # creating ROC Curve
         y_pred_proba = regressor.predict_proba(X_test)[::, 1]
         fpr, tpr, _ = metrics.roc_curve(y_test, y_pred_proba)
         auc = metrics.roc_auc_score(y_test, y_pred_proba)
@@ -110,51 +110,23 @@ if __name__ == "__main__":
         # plt.show()
         plt.savefig('confusion_matrix_and_ROC_Curve/ROC_Curve.png')
 
-    #regression_model(list_of_attributes)
 
-################################################################################################################
-#New changes for regression models
+    ################################################################################################################
+    # New changes for classification models
 
-    #tabular_representation = tabular_representation.iloc[290:] #for quick code testing!
-    #tabular_representation = tabular_representation.drop(tabular_representation.iloc[:, 0:2180], axis=1) #for quick code testing
+    # tabular_representation = tabular_representation.iloc[290:] #for quick code testing!
+    # tabular_representation = tabular_representation.drop(tabular_representation.iloc[:, 0:2180], axis=1) #for quick code testing
 
-    X = tabular_representation.drop(['mistake', 'recordingID'], axis=1)
-    y = tabular_representation['mistake']
 
     def get_models():
         models = dict()
-        '''
-        # logistic regression
-        rfe = RFECV(estimator=LogisticRegression())
-        model = DecisionTreeClassifier()
-        models['logistic regression'] = Pipeline(steps=[('s', rfe), ('m', model)])
-
-        # perceptron
-        rfe = RFECV(estimator=Perceptron())
-        model = DecisionTreeClassifier()
-        models['perceptron'] = Pipeline(steps=[('s', rfe), ('m', model)])
-
-        # cart
-        rfe = RFECV(estimator=DecisionTreeClassifier())
-        model = DecisionTreeClassifier()
-        models['cart'] = Pipeline(steps=[('s', rfe), ('m', model)])
-        
-        # rf
-        rfe = RFECV(estimator=RandomForestClassifier())
-        model = DecisionTreeClassifier()
-        models['random forest'] = Pipeline(steps=[('s', rfe), ('m', model)])
-
-        # gbm
-        #rfe = RFECV(estimator=GradientBoostingClassifier())
-        #model = DecisionTreeClassifier()
-        #models['gbm'] = Pipeline(steps=[('s', rfe), ('m', model)])
-        '''
-        #svc linear
-        rfe = RFECV(estimator=SVC(kernel='linear'), step=1, cv=3, scoring='f1')
-        model = SVC(kernel='linear')
-        models['svm linear'] = Pipeline(steps=[('s', rfe), ('m', model)])
-
+        models['SVC_rbf'] = SVC(kernel='rbf')
+        #models['SVC_linear'] = SVC(kernel='linear') #don't do this too slow
+        models['random_forest_n10'] = RandomForestClassifier(n_estimators=10)
+        models['random_forest_n100'] = RandomForestClassifier(n_estimators=100)
+        models['gradient_boosting'] = GradientBoostingClassifier()
         return models
+
 
     # evaluate a give model using cross-validation
     def evaluate_model(model, X, y):
@@ -163,6 +135,23 @@ if __name__ == "__main__":
         return scores
 
     # get the models to evaluate
+    X_full = tabular_representation.drop(['mistake', 'recordingID'], axis=1)
+    y = tabular_representation['mistake']
+
+    # activate features selection
+    selected_features = select_features(X_full, y, 0.05, train_folder)  # take only 5% of the best features n=~100
+
+    X = X_full[selected_features]
+    #print(selected_features)
+
+    """
+    # @todo scale the features
+    # Normalize/Scale only on train data. Use that scaler to later scale valid and test data
+    scaler = MinMaxScaler()
+    X = scaler.fit(X)
+    """
+
+    # model training
     models = get_models()
     # evaluate the models and store results
     results, names = list(), list()
@@ -170,7 +159,8 @@ if __name__ == "__main__":
         scores = evaluate_model(model, X, y)
         results.append(scores)
         names.append(name)
-        print(name, '- mean(score): ',np.mean(scores),', std(score):', np.std(scores))
+        print(name, '- mean(score): ', np.mean(scores), ', std(score):', np.std(scores))
     # plot model performance for comparison
     plt.boxplot(results, labels=names, showmeans=True)
     plt.show()
+
