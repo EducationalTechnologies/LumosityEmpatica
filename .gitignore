@@ -140,11 +140,11 @@ test_labels_broken.npy
 test_set_broken.npy
 
 /manual_sessions
-/manual_sessions/cpr_test
 
 /logs
 /runs
 /models/checkpoints
+/confusion_matrix_and_ROC_Curve
 
 *.h5
 gauge.png

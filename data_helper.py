@@ -1,8 +1,9 @@
 import numpy as np
 import zipfile, os, json, re, datetime, time
 import pandas as pd
-from pandas.io.json import json_normalize
+# from pandas.io.json import json_normalize
 import pickle
+import random
 
 
 # FUNCTIONS
@@ -66,11 +67,11 @@ def sensor_file_to_array(data, offset):
     # check in case of null values
     data[framesKey] = [x for x in data[framesKey] if x]
     df = pd.concat([pd.DataFrame(data),
-                    json_normalize(data[framesKey])],
+                    pd.json_normalize(data[framesKey])],
                    axis=1).drop(framesKey, 1)
 
     # remove underscore from column-file e.g. 3_Ankle_Left_X becomes 3AnkleLeftX
-    df.columns = df.columns.str.replace("_", "")
+    df.columns = df.columns.str.replace("_", "", regex=False)
 
     if not df.empty:
         # from string to timedelta + offset
@@ -79,7 +80,7 @@ def sensor_file_to_array(data, offset):
         # retrieve the application name
         app_name = df[applicationNameKey].all()
         # remove the prefix 'frameAttributes.' from the column names
-        df.columns = df.columns.str.replace("frameAttributes", df[applicationNameKey].all())
+        df.columns = df.columns.str.replace("frameAttributes", df[applicationNameKey].all(), regex=False)
 
         # set the timestamp as index
         df = df.set_index('frameStamp').iloc[:, 2:]
@@ -117,13 +118,13 @@ def annotation_file_to_array(data, offset):
     if 'Intervals' in data:
         intervalsKey = 'Intervals'
     df = pd.concat([pd.DataFrame(data),
-                    json_normalize(data[intervalsKey])],
+                    pd.json_normalize(data[intervalsKey])],
                    axis=1).drop(intervalsKey, 1)
     # convert to numeric (when reading from JSON it converts into object in the pandas DF)
     # with the parameter 'ignore' it will skip all the non-numerical fields
     df = df.apply(pd.to_numeric, errors='ignore')
     # remove the prefix 'annotations.' from the column names
-    df.columns = df.columns.str.replace("annotations.", "")
+    df.columns = df.columns.str.replace("annotations.", "", regex=False)
     # from string to timedelta + offset
     df.start = pd.to_timedelta(df.start) + offset
     # from string to timedelta + offset
@@ -161,13 +162,14 @@ def tensor_transform(df_all, df_ann, res_rate, to_exclude=None):
             if delta > interval_max:
                 interval_max = delta
         else:
-            #print('Interval '+str(i_counter)+' without data, excluded from the list.')
+            # print('Interval '+str(i_counter)+' without data, excluded from the list.')
             interval_todelete.append(i_counter)
 
-    if len(interval_todelete)>0:
-        print('Deleted the following intervals without data: '+str(interval_todelete))
-        df_ann_validated = df_ann.reset_index().drop(df_ann.index[interval_todelete]) # Drop a row by index
-
+    if len(interval_todelete) > 0:
+        print('Deleted the following intervals without data: ' + str(interval_todelete))
+        df_ann_validated = df_ann.reset_index().drop(df_ann.index[interval_todelete])  # Drop a row by index
+    # trick to get rid of the space
+    df_ann_validated.recordingID = df_ann_validated.recordingID.str.strip()
     # This results in different length of entries
     df_resampled = [dt.resample(str(res_rate) + 'ms').first() if not dt.empty else None for dt in masked_df]
     median_signal_length = int(np.median([0 if l is None else len(l) for l in df_resampled]))
@@ -218,9 +220,10 @@ def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None)
         sensor_data, annotations = read_data_files(sessions, ignore_files=ignore_files)
 
         # Transform sensor_data to tensor_data and save it
-        tensor_data, annotations, attributes = tensor_transform(sensor_data, annotations, res_rate=res_rate, to_exclude=to_exclude)
+        tensor_data, annotations_validated, attributes = tensor_transform(sensor_data, annotations, res_rate=res_rate,
+                                                                to_exclude=to_exclude)
         with open(ann_name, "wb") as f:
-            pickle.dump(annotations, f)
+            pickle.dump(annotations_validated, f)
         with open(sensor_name, "wb") as f:
             pickle.dump(tensor_data, f)
 
@@ -237,40 +240,21 @@ def get_feedback_from_files(folder, ignore_files=None):
     return feedback_data, annotations
 
 
-def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0.85, ignore_files=None,
-                              to_exclude=None):
-    if new_folder_location is None:
-        new_folder_location = data
+def split_data_train_test(tensor, annotations, train_test_ratio=0.85, random_shuffling=False):
     # Train and test data is chosen randomly
-    sessions = read_zips_from_folder(data)
-    sensor_data, annotations = read_data_files(sessions, ignore_files=ignore_files)
-    tensor_data = tensor_transform(sensor_data, annotations, res_rate=25, to_exclude=to_exclude)
-    # mask with train_test_ratio*len(annotations) amount of ones
-    train_mask = np.zeros(len(annotations), dtype=int)
-    train_mask[:int(len(annotations) * train_test_ratio)] = 1
-    np.random.shuffle(train_mask)
-    train_mask = train_mask.astype(bool)
-
-    train_annotations = annotations[train_mask]
-    train_sensor_data = tensor_data[train_mask]
-    test_annotations = annotations[~train_mask]
-    test_sensor_data = tensor_data[~train_mask]
-
-    if ignore_files is None:
-        ann_name = "annotations.pkl"
-        sensor_name = "sensor_data.pkl"
+    # this function implements leave n participant out splitting
+    users_all = annotations.recordingID.unique()
+    n_users_to_hold = int(np.ceil(len(annotations.recordingID.unique()) * (1 - train_test_ratio)))
+    # shuffle the users
+    if random_shuffling:
+        users_held = random.sample(annotations.recordingID.unique().tolist(), n_users_to_hold)
+    # else take the last n
     else:
-        ann_name = f"annotations_ignorefiles{'_'.join(ignore_files)}.pkl"
-        sensor_name = f"sensor_data_ignorefiles{'_'.join(ignore_files)}.pkl"
-
-    os.makedirs(f'{new_folder_location}/train', exist_ok=True)
-    with open(f'{new_folder_location}/train/{ann_name}', "wb") as f:
-        pickle.dump(train_annotations, f)
-    with open(f'{new_folder_location}/train/{sensor_name}', "wb") as f:
-        pickle.dump(train_sensor_data, f)
-
-    os.makedirs(f'{new_folder_location}/test', exist_ok=True)
-    with open(f'{new_folder_location}/test/{ann_name}', "wb") as f:
-        pickle.dump(test_annotations, f)
-    with open(f'{new_folder_location}/test/{sensor_name}', "wb") as f:
-        pickle.dump(test_sensor_data, f)
+        users_held = annotations.recordingID.unique().tolist()[-n_users_to_hold:]
+    print("We will be testing on the user(s) "+str(users_held)+" \n")
+    users_left = list(set(users_all) - set(users_held))
+    y_train = annotations[annotations.recordingID.isin(users_left)]
+    y_test = annotations[annotations.recordingID.isin(users_held)]
+    X_train = tensor[y_train.index.to_list()]
+    X_test = tensor[y_test.index.to_list()]
+    return X_train, y_train, X_test, y_test
