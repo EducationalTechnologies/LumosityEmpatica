@@ -145,6 +145,7 @@ test_set_broken.npy
 /runs
 /models/checkpoints
 /confusion_matrix_and_ROC_Curve
+/plots
 
 *.h5
 gauge.png

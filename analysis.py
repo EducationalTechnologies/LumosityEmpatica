@@ -1,4 +1,5 @@
 import data_helper
+import os
 import numpy as np
 import seaborn as sns
 import pandas as pd
@@ -9,14 +10,13 @@ from feature_extraction import extract_df_with_features
 from feature_selection import select_features
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import *
-from pandas import DataFrame
-from sklearn.model_selection import GridSearchCV
 
 
 def get_models():
     models = dict()
     models['support_vector_machines'] = SVC(C=0.1, gamma=1, kernel='rbf')
-    models['random_forest'] = RandomForestClassifier(criterion='gini', max_depth=4,max_features='sqrt', n_estimators=100)
+    models['random_forest'] = RandomForestClassifier(criterion='gini', max_depth=4, max_features='sqrt',
+                                                     n_estimators=100)
     models['gradient_boosting'] = GradientBoostingClassifier(criterion='friedman_mse',
                                                              learning_rate=0.01,
                                                              loss='deviance',
@@ -30,7 +30,7 @@ def get_models():
 
 
 def train_and_evaluate_model(model, X_train, y_train, X_test, y_test):
-    #for k, v in params.items():
+    # for k, v in params.items():
     #    model.set_params(**{k: v})
     model_name = type(model).__name__
     print(" ")
@@ -38,7 +38,11 @@ def train_and_evaluate_model(model, X_train, y_train, X_test, y_test):
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     scores = accuracy_score(y_test, y_pred)
+    plot_confusion_matrix(y_test, y_pred, scores, model_name)
+    return scores
 
+
+def plot_confusion_matrix(y_test, y_pred, scores, model_name):
     # confusion matrix
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square=True, cmap='Blues_r')
@@ -46,68 +50,12 @@ def train_and_evaluate_model(model, X_train, y_train, X_test, y_test):
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
     plt.tight_layout()
-    plt.savefig('Confusion_matrix_and_ROC_Curve/confusion_matrix {0}.png'.format(model_name))
+    plt.savefig(folder_plots + 'confusion_matrix_{0}.png'.format(model_name))
     plt.show()
-    return scores
 
-'''
-def grid_search(model, X, y):
-    check_model = str(type(model))
-
-    if ("SVC" in check_model):
-        print(" ")
-        print("Analysing of best parameters for", model, "...")
-        param_grid = {'C': [0.1, 1, 10, 100],
-                      'gamma': [1, 0.1, 0.01, 0.001],
-                      'kernel': ['linear','rbf', 'poly', 'sigmoid']}
-
-        param_grid = {'C': [0.1], 'gamma': [1], 'kernel': ['rbf']}  #best parameters SVC
-
-    elif ("RandomForestClassifier" in check_model):
-        print(" ")
-        print("Analysing of best parameters for", model, "...")
-        param_grid = {'n_estimators': [10, 100, 120, 200, 300],
-                      'max_features': ['auto', 'sqrt', 'log2'],
-                      'max_depth': [4, 5, 6, 7],
-                      'criterion': ['gini', 'entropy']}
-
-        param_grid = {'criterion': ['gini'], 'max_depth': [4], 'max_features': ['sqrt'], 'n_estimators': [100]} #best parameters RFC
-
-    elif ("GradientBoostingClassifier" in check_model):
-        print(" ")
-        print("Analysing of best parameters for", model, "...")
-        param_grid = {"loss": ["deviance"],
-                      "learning_rate": [0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2],
-                      "min_samples_split": np.linspace(0.1, 0.5, 12),
-                      "min_samples_leaf": np.linspace(0.1, 0.5, 12),
-                      "max_depth": [3, 5, 8],
-                      "max_features": ["log2", "sqrt"],
-                      "criterion": ["friedman_mse", "mae"],
-                      "subsample": [0.5, 0.618, 0.8, 0.85, 0.9, 0.95, 1.0],
-                      "n_estimators": [10, 100]}
-
-        param_grid = {'criterion': ['friedman_mse'],  #best parameters GBC
-                      'learning_rate': [0.01],
-                      'loss': ['deviance'],
-                      'max_depth': [3],
-                      'max_features': ['log2'],
-                      "min_samples_split": [0.1],
-                      "min_samples_leaf": [0.1],
-                      'n_estimators': [10],
-                      'subsample': [0.5]}
-    else:
-        print("Define grid_param in elif-loop for new model, which you added to models-set")
-
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, scoring='accuracy', cv=10, refit=True, n_jobs=-1)
-    grid_results = grid.fit(X, y)
-    print("Best score for {2}: {0}, using {1}".format(grid_results.best_score_, grid_results.best_params_, model))
-    params = grid_results.best_params_
-    return params
-'''
 
 # creating ROC curves for all models with using roc_auc_score
 def ROC_curve(models):
-
     classifiers = list(models.values())
     # classifiers = [SVC(C=0.1, gamma=1, kernel='rbf'),
     #               RandomForestClassifier(criterion='gini', max_depth=4, max_features='sqrt', n_estimators=100),
@@ -138,7 +86,7 @@ def ROC_curve(models):
     plt.ylabel("True Positive Rate", fontsize=15)
     plt.title('ROC Curves', fontweight='bold', fontsize=15)
     plt.legend(prop={'size': 9}, loc='lower right')
-    plt.savefig('confusion_matrix_and_ROC_Curve/ROC_Curve.png', dpi=400)
+    plt.savefig(folder_plots + 'ROC_Curve.png', dpi=400)
     plt.show()
 
 
@@ -154,6 +102,9 @@ if __name__ == "__main__":
     print("Shape of the annotation is: " + str(np.shape(annotations)) + "\n")
 
     attributes = ['bvp', 'gsr', 'hrv', 'ibi', 'tmp']
+
+    folder_plots = 'plots/'
+    os.makedirs(folder_plots, exist_ok=True)
 
     # split the dataset between train and test
     X_train, y_train, X_test, y_test = data_helper.split_data_train_test(tensor_data, annotations,
@@ -184,13 +135,13 @@ if __name__ == "__main__":
     # evaluate the models and store results
     results, names = list(), list()
     for name, model in models.items():
-        #params = grid_search(model, X_train, y_train)
+        # params = grid_search(model, X_train, y_train)
         score = train_and_evaluate_model(model, X_train, y_train, X_test, y_test)
         results.append(score)
         names.append(name)
         print('mean(score): ', np.mean(score), ', std(score):', np.std(score))
     plt.bar(names, results)
     plt.ylim(0, 1)
-    plt.savefig('Confusion_matrix_and_ROC_Curve/models_comparing.png')
+    plt.savefig(folder_plots + 'models_comparing.png')
     plt.show()
     ROC_curve(models)

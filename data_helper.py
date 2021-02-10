@@ -162,12 +162,13 @@ def tensor_transform(df_all, df_ann, res_rate, to_exclude=None):
             if delta > interval_max:
                 interval_max = delta
         else:
-            # print('Interval '+str(i_counter)+' without data, excluded from the list.')
+            print('Interval '+str(i_counter)+' without data, excluded from the list.')
             interval_todelete.append(i_counter)
 
     if len(interval_todelete) > 0:
-        print('Deleted the following intervals without data: ' + str(interval_todelete))
+        print('Deleted the n='+str(len(interval_todelete))+' intervals without data: ' + str(interval_todelete))
         df_ann_validated = df_ann.reset_index().drop(df_ann.index[interval_todelete])  # Drop a row by index
+
     # trick to get rid of the space
     df_ann_validated.recordingID = df_ann_validated.recordingID.str.strip()
     # This results in different length of entries
@@ -227,7 +228,7 @@ def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None)
         with open(sensor_name, "wb") as f:
             pickle.dump(tensor_data, f)
 
-    annotations = annotations.reset_index(drop=True)
+    annotations = annotations_validated.reset_index(drop=True)
     return tensor_data, annotations, attributes
 
 
