@@ -1,22 +1,28 @@
 import data_helper
+import grid_search
 import os
 import numpy as np
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.svm import SVC
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from feature_extraction import extract_df_with_features
 from feature_selection import select_features
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import *
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline
+
+
 
 
 def get_models():
     models = dict()
-    models['support_vector_machines'] = SVC(C=0.1, gamma=1, kernel='rbf')
-    models['random_forest'] = RandomForestClassifier(criterion='gini', max_depth=4, max_features='sqrt',
-                                                     n_estimators=100)
+    '''
+    models['support_vector_machines'] = SVC(C=0.1, gamma=0.001, kernel='poly')
+    models['random_forest'] = RandomForestClassifier(criterion='gini', max_depth=7, max_features='auto',
+                                                     n_estimators=10)
     models['gradient_boosting'] = GradientBoostingClassifier(criterion='friedman_mse',
                                                              learning_rate=0.01,
                                                              loss='deviance',
@@ -26,12 +32,16 @@ def get_models():
                                                              min_samples_leaf=0.1,
                                                              n_estimators=10,
                                                              subsample=0.5)
+    '''
+    models['support_vector_machines'] = SVC()
+    models['random_forest'] = RandomForestClassifier()
+    models['gradient_boosting'] = GradientBoostingClassifier()
     return models
 
 
-def train_and_evaluate_model(model, X_train, y_train, X_test, y_test):
-    # for k, v in params.items():
-    #    model.set_params(**{k: v})
+def train_and_evaluate_model(model, params,  X_train, y_train, X_test, y_test):
+    for k, v in params.items():
+      model.set_params(**{k: v})
     model_name = type(model).__name__
     print(" ")
     print("Training model {0}: ".format(model_name))
@@ -89,6 +99,18 @@ def ROC_curve(models):
     plt.savefig(folder_plots + 'ROC_Curve.png', dpi=400)
     plt.show()
 
+'''
+def plot_imbalanced_clf(X_train, y_train): #X, y?
+    
+        counter = Counter(y)
+        # scatter plot of examples by class label
+        for label, _ in counter.items():
+            row_ix = where(y_train == label)[0]
+            plt.scatter(X_train[row_ix, 0], X_train[row_ix, 1], label=str(label))
+        plt.legend()
+        plt.savefig(folder_plots + 'plot _imbalanced_clf')
+        plt.show()
+'''
 
 if __name__ == "__main__":
     data_folder = "manual_sessions/lumosity-dataset"
@@ -130,13 +152,14 @@ if __name__ == "__main__":
     X_train = scaler.transform(X_train)
     X_test = scaler.transform(X_test)
 
+
     # model training
     models = get_models()
     # evaluate the models and store results
     results, names = list(), list()
     for name, model in models.items():
-        # params = grid_search(model, X_train, y_train)
-        score = train_and_evaluate_model(model, X_train, y_train, X_test, y_test)
+        params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
+        score = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
         results.append(score)
         names.append(name)
         print('mean(score): ', np.mean(score), ', std(score):', np.std(score))
