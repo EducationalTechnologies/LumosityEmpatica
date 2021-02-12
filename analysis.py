@@ -153,18 +153,18 @@ if __name__ == "__main__":
         print('mean(score_acc): ', np.mean(score_acc), ', std(score_acc):', np.std(score_acc))
         print('mean(score_f1): ', np.mean(score_f1), ', std(score_f1):', np.std(score_f1))
 
-    for i in results:
+    for j in results:
         acc_score_list = []
-        acc_score_list.append(i[0])
+        acc_score_list.append(j[0])
     plt.bar(names, acc_score_list)
     plt.ylim(0, 1)
     plt.title('Accuracy score', fontsize=10)
     plt.savefig(folder_plots + 'acc_score_models_comparing.png')
     plt.show()
 
-    for i in results:
+    for j in results:
         f1_score_list = []
-        f1_score_list.append(i[1])
+        f1_score_list.append(j[1])
     plt.bar(names, f1_score_list)
     plt.ylim(0, 1)
     plt.title('F-1 score', fontsize=10)
