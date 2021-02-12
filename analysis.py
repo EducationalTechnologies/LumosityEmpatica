@@ -79,9 +79,6 @@ def ROC_curve(classifiers):
         auc = roc_auc_score(y_test, y_pred)
         table = table.append({'classifiers': model.__class__.__name__, 'fpr': fpr,
                               'tpr': tpr, 'auc': auc}, ignore_index=True)
-        print(table, type(table))
-        for i in table:
-            print(i, type(i))
 
     # Set name of the classifiers as index labels
     table.set_index('classifiers', inplace=True)
