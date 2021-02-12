@@ -17,22 +17,9 @@ from imblearn.pipeline import Pipeline
 
 
 
+
 def get_models():
     models = dict()
-    '''
-    models['support_vector_machines'] = SVC(C=0.1, gamma=0.001, kernel='poly')
-    models['random_forest'] = RandomForestClassifier(criterion='gini', max_depth=7, max_features='auto',
-                                                     n_estimators=10)
-    models['gradient_boosting'] = GradientBoostingClassifier(criterion='friedman_mse',
-                                                             learning_rate=0.01,
-                                                             loss='deviance',
-                                                             max_depth=3,
-                                                             max_features='log2',
-                                                             min_samples_split=0.1,
-                                                             min_samples_leaf=0.1,
-                                                             n_estimators=10,
-                                                             subsample=0.5)
-    '''
     models['support_vector_machines'] = SVC()
     models['random_forest'] = RandomForestClassifier()
     models['gradient_boosting'] = GradientBoostingClassifier()
@@ -43,45 +30,58 @@ def train_and_evaluate_model(model, params,  X_train, y_train, X_test, y_test):
     for k, v in params.items():
       model.set_params(**{k: v})
     model_name = type(model).__name__
-    print(" ")
     print("Training model {0}: ".format(model_name))
+    model = Pipeline([('sampling', SMOTE(sampling_strategy='minority')), ('model', model)])
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
-    scores = accuracy_score(y_test, y_pred)
-    plot_confusion_matrix(y_test, y_pred, scores, model_name)
-    return scores
+    score_acc = accuracy_score(y_test, y_pred)
+    score_f1 = f1_score(y_test, y_pred)
+    plot_confusion_matrix(y_test, y_pred, score_acc, model_name)
+    plot_confusion_matrix(y_test, y_pred, score_f1, model_name)
+    return score_acc, score_f1
+i = 1
 
-
-def plot_confusion_matrix(y_test, y_pred, scores, model_name):
+def plot_confusion_matrix(y_test, y_pred, score, model_name):
     # confusion matrix
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square=True, cmap='Blues_r')
-    plt.title('Accuracy Score with {1} model: {0} '.format(scores, model_name), fontsize=10)
+    global i
+
+    if (i == 1 or i == 3 or i == 5):
+        plt.title('Accuracy score with {0} model: {1} '.format(model_name, score), fontsize=10)
+        i+=1
+    else:
+        plt.title('F1 score with {0} model: {1} '.format(model_name, score), fontsize=10)
+        i+=1
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
     plt.tight_layout()
-    plt.savefig(folder_plots + 'confusion_matrix_{0}.png'.format(model_name))
+    plt.savefig(folder_plots + 'confusion_matrix_{0}_{1}.png'.format(str(i-1), model_name))
     plt.show()
 
+def set_classifiers(model, params):
+    for k, v in params.items():
+        model.set_params(**{k: v})
+    classifiers =list(models.values())
+
+    return classifiers
 
 # creating ROC curves for all models with using roc_auc_score
-def ROC_curve(models):
-    classifiers = list(models.values())
-    # classifiers = [SVC(C=0.1, gamma=1, kernel='rbf'),
-    #               RandomForestClassifier(criterion='gini', max_depth=4, max_features='sqrt', n_estimators=100),
-    #               GradientBoostingClassifier(criterion='friedman_mse', learning_rate=0.01, loss='deviance',
-    #                                          max_depth=3, max_features='log2', min_samples_split=0.1,
-    #                                          min_samples_leaf=0.1, n_estimators=10, subsample=0.5)]
+def ROC_curve(classifiers):
 
     table = pd.DataFrame(columns=['classifiers', 'fpr', 'tpr', 'auc'])
-    for cls in classifiers:
-        cls.probability = True
-        model = cls.fit(X_train, y_train)
+    for model in classifiers:
+        model.probability = True
+        # model = Pipeline([('sampling', SMOTE(sampling_strategy='minority')), ('model', model)])
+        model = model.fit(X_train, y_train)
         y_pred = model.predict_proba(X_test)[::, 1]
         fpr, tpr, _ = roc_curve(y_test, y_pred)
         auc = roc_auc_score(y_test, y_pred)
-        table = table.append({'classifiers': cls.__class__.__name__, 'fpr': fpr,
+        table = table.append({'classifiers': model.__class__.__name__, 'fpr': fpr,
                               'tpr': tpr, 'auc': auc}, ignore_index=True)
+        print(table, type(table))
+        for i in table:
+            print(i, type(i))
 
     # Set name of the classifiers as index labels
     table.set_index('classifiers', inplace=True)
@@ -94,23 +94,11 @@ def ROC_curve(models):
     plt.xlabel("False Positive Rate", fontsize=15)
     plt.yticks(np.arange(0.0, 1.1, step=0.1))
     plt.ylabel("True Positive Rate", fontsize=15)
-    plt.title('ROC Curves', fontweight='bold', fontsize=15)
+    plt.title('ROC Curves', fontweight='bold', fontsize=10)
     plt.legend(prop={'size': 9}, loc='lower right')
     plt.savefig(folder_plots + 'ROC_Curve.png', dpi=400)
     plt.show()
 
-'''
-def plot_imbalanced_clf(X_train, y_train): #X, y?
-    
-        counter = Counter(y)
-        # scatter plot of examples by class label
-        for label, _ in counter.items():
-            row_ix = where(y_train == label)[0]
-            plt.scatter(X_train[row_ix, 0], X_train[row_ix, 1], label=str(label))
-        plt.legend()
-        plt.savefig(folder_plots + 'plot _imbalanced_clf')
-        plt.show()
-'''
 
 if __name__ == "__main__":
     data_folder = "manual_sessions/lumosity-dataset"
@@ -156,15 +144,35 @@ if __name__ == "__main__":
     # model training
     models = get_models()
     # evaluate the models and store results
-    results, names = list(), list()
+    results, names= list(), list()
+
     for name, model in models.items():
         params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
-        score = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
-        results.append(score)
+        score_acc, score_f1 = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
+        result_tuple = (score_acc, score_f1)
+        results.append(result_tuple)
+        classifiers = set_classifiers(model, params)
         names.append(name)
-        print('mean(score): ', np.mean(score), ', std(score):', np.std(score))
-    plt.bar(names, results)
+        print('mean(score_acc): ', np.mean(score_acc), ', std(score_acc):', np.std(score_acc))
+        print('mean(score_f1): ', np.mean(score_f1), ', std(score_f1):', np.std(score_f1))
+
+    for i in results:
+        acc_score_list = []
+        acc_score_list.append(i[0])
+    plt.bar(names, acc_score_list)
     plt.ylim(0, 1)
-    plt.savefig(folder_plots + 'models_comparing.png')
+    plt.title('Accuracy score', fontsize=10)
+    plt.savefig(folder_plots + 'acc_score_models_comparing.png')
     plt.show()
-    ROC_curve(models)
+
+    for i in results:
+        f1_score_list = []
+        f1_score_list.append(i[1])
+    plt.bar(names, f1_score_list)
+    plt.ylim(0, 1)
+    plt.title('F-1 score', fontsize=10)
+    plt.savefig(folder_plots + 'f1_score_models_comparing.png')
+    plt.show()
+
+    ROC_curve(classifiers)
+
