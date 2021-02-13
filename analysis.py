@@ -13,71 +13,105 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import *
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
-
-
-
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
 
 
 def get_models():
     models = dict()
-    models['support_vector_machines'] = SVC()
-    models['random_forest'] = RandomForestClassifier()
-    models['gradient_boosting'] = GradientBoostingClassifier()
+    models['SVC'] = SVC()
+    models['RFC'] = RandomForestClassifier()
+    models['GBC'] = GradientBoostingClassifier()
+    '''
+    models['KNC'] = KNeighborsClassifier()
+    models['DTC'] = DecisionTreeClassifier()
+    models['NB'] = GaussianNB()
+    '''
     return models
+
+def define_params(model):
+    check_model = str(type(model))
+    if ("SVC" in check_model):
+        params = {'kernel': 'poly', 'gamma': 1, 'C': 10}
+
+    elif ("RandomForestClassifier" in check_model):
+        params = {'n_estimators': 300, 'max_features': 'auto', 'max_depth': 7, 'criterion': 'gini'}
+
+    elif ("GradientBoostingClassifier" in check_model):
+        params = {'subsample': 0.9,
+                  'n_estimators': 100,
+                  'min_samples_split': 0.3545454545454546,
+                  'min_samples_leaf': 0.17272727272727273,
+                  'max_features': 'log2',
+                  'max_depth': 8,
+                  'loss': 'deviance',
+                  'learning_rate': 0.2,
+                  'criterion': 'friedman_mse'}
+        '''
+    elif ("KNeighborsClassifier" in check_model):
+        params = {'leaf_size' : 5}
+
+    elif ("DecisionTreeClassifier" in check_model):
+        params = {'criterion': 'gini'}
+
+    elif ("GaussianNB" in check_model):
+        params = {'var_smoothing': 0.00000001}
+        '''
+    else:
+        print("No 'params' defined for model")
+
+    return params
+
 
 
 def train_and_evaluate_model(model, params,  X_train, y_train, X_test, y_test):
     for k, v in params.items():
       model.set_params(**{k: v})
     model_name = type(model).__name__
+    print(" ")
     print("Training model {0}: ".format(model_name))
     model = Pipeline([('sampling', SMOTE(sampling_strategy='minority')), ('model', model)])
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     score_acc = accuracy_score(y_test, y_pred)
     score_f1 = f1_score(y_test, y_pred)
-    plot_confusion_matrix(y_test, y_pred, score_acc, model_name)
     plot_confusion_matrix(y_test, y_pred, score_f1, model_name)
     return score_acc, score_f1
-i = 1
+
 
 def plot_confusion_matrix(y_test, y_pred, score, model_name):
     # confusion matrix
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square=True, cmap='Blues_r')
-    global i
-
-    if (i == 1 or i == 3 or i == 5):
-        plt.title('Accuracy score with {0} model: {1} '.format(model_name, score), fontsize=10)
-        i+=1
-    else:
-        plt.title('F1 score with {0} model: {1} '.format(model_name, score), fontsize=10)
-        i+=1
+    plt.title('F1_score with {1} model: {0} '.format(score, model_name), fontsize=10)
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
     plt.tight_layout()
-    plt.savefig(folder_plots + 'confusion_matrix_{0}_{1}.png'.format(str(i-1), model_name))
+    plt.savefig(folder_plots + 'confusion_matrix_{0}.png'.format(model_name))
     plt.show()
+
+
 
 def set_classifiers(model, params):
     for k, v in params.items():
         model.set_params(**{k: v})
-    classifiers =list(models.values())
+    classifiers = list(models.values())
 
     return classifiers
 
 # creating ROC curves for all models with using roc_auc_score
 def ROC_curve(classifiers):
-
     table = pd.DataFrame(columns=['classifiers', 'fpr', 'tpr', 'auc'])
     for model in classifiers:
+        model_name = type(model).__name__
         model.probability = True
-        # model = Pipeline([('sampling', SMOTE(sampling_strategy='minority')), ('model', model)])
+        model = Pipeline([('sampling', SMOTE(sampling_strategy='minority')), ('model', model)])
         model = model.fit(X_train, y_train)
         y_pred = model.predict_proba(X_test)[::, 1]
         fpr, tpr, _ = roc_curve(y_test, y_pred)
         auc = roc_auc_score(y_test, y_pred)
-        table = table.append({'classifiers': model.__class__.__name__, 'fpr': fpr,
+        table = table.append({'classifiers': model_name, 'fpr': fpr,
                               'tpr': tpr, 'auc': auc}, ignore_index=True)
 
     # Set name of the classifiers as index labels
@@ -144,7 +178,8 @@ if __name__ == "__main__":
     results, names= list(), list()
 
     for name, model in models.items():
-        params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
+        #params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
+        params = define_params(model)
         score_acc, score_f1 = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
         result_tuple = (score_acc, score_f1)
         results.append(result_tuple)
@@ -156,6 +191,7 @@ if __name__ == "__main__":
     for j in results:
         acc_score_list = []
         acc_score_list.append(j[0])
+    plt.xticks(fontsize=10)
     plt.bar(names, acc_score_list)
     plt.ylim(0, 1)
     plt.title('Accuracy score', fontsize=10)
@@ -165,6 +201,7 @@ if __name__ == "__main__":
     for j in results:
         f1_score_list = []
         f1_score_list.append(j[1])
+    plt.xticks(fontsize=10)
     plt.bar(names, f1_score_list)
     plt.ylim(0, 1)
     plt.title('F-1 score', fontsize=10)
