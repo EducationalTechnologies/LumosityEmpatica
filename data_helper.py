@@ -157,25 +157,31 @@ def tensor_transform(df_all, df_ann, res_rate, to_exclude=None):
     interval_todelete = list()
     for dt in masked_df:
         i_counter = i_counter + 1
-        if dt.index.size > 0:
+
+        if dt.index.size > 0 and not dt.isnull().all().any():
             delta = np.timedelta64(dt.index[-1] - dt.index[0], 'ms') / np.timedelta64(1, 'ms')
             if delta > interval_max:
                 interval_max = delta
         else:
-            print('Interval '+str(i_counter)+' without data, excluded from the list.')
+            #print('Interval ' + str(i_counter) + ' without data, excluded from the list.')
             interval_todelete.append(i_counter)
 
     if len(interval_todelete) > 0:
-        print('Deleted the n='+str(len(interval_todelete))+' intervals without data: ' + str(interval_todelete))
+        print('Deleted the n=' + str(
+            len(interval_todelete)) + ' intervals without data or with missing attributes: ' + str(interval_todelete))
         df_ann_validated = df_ann.reset_index().drop(df_ann.index[interval_todelete])  # Drop a row by index
+        #masked_df = np.delete(masked_df, df_ann.index[interval_todelete].to_list())
 
     # trick to get rid of the space
     df_ann_validated.recordingID = df_ann_validated.recordingID.str.strip()
     # This results in different length of entries
     df_resampled = [dt.resample(str(res_rate) + 'ms').first() if not dt.empty else None for dt in masked_df]
+
     median_signal_length = int(np.median([0 if l is None else len(l) for l in df_resampled]))
     print(f"Median signal length: {median_signal_length}")
     df_tensor = create_batches(df_resampled, median_signal_length)
+
+
     return df_tensor, df_ann_validated, df_all.columns
 
 
@@ -221,14 +227,14 @@ def get_data_from_files(folder, ignore_files=None, res_rate=25, to_exclude=None)
         sensor_data, annotations = read_data_files(sessions, ignore_files=ignore_files)
 
         # Transform sensor_data to tensor_data and save it
-        tensor_data, annotations_validated, attributes = tensor_transform(sensor_data, annotations, res_rate=res_rate,
+        tensor_data, annotations, attributes = tensor_transform(sensor_data, annotations, res_rate=res_rate,
                                                                 to_exclude=to_exclude)
         with open(ann_name, "wb") as f:
-            pickle.dump(annotations_validated, f)
+            pickle.dump(annotations, f)
         with open(sensor_name, "wb") as f:
             pickle.dump(tensor_data, f)
+        annotations = annotations.reset_index(drop=True)
 
-    annotations = annotations_validated.reset_index(drop=True)
     return tensor_data, annotations, attributes
 
 
@@ -252,10 +258,52 @@ def split_data_train_test(tensor, annotations, train_test_ratio=0.85, random_shu
     # else take the last n
     else:
         users_held = annotations.recordingID.unique().tolist()[-n_users_to_hold:]
-    print("We will be testing on the user(s) "+str(users_held)+" \n")
+    print("We will be testing on the user(s) " + str(users_held) + " \n")
     users_left = list(set(users_all) - set(users_held))
     y_train = annotations[annotations.recordingID.isin(users_left)]
     y_test = annotations[annotations.recordingID.isin(users_held)]
     X_train = tensor[y_train.index.to_list()]
     X_test = tensor[y_test.index.to_list()]
     return X_train, y_train, X_test, y_test
+
+
+def create_train_test_folders(data, new_folder_location=None, train_test_ratio=0.85, ignore_files=None,
+                              to_exclude=None):
+    if new_folder_location is None:
+        new_folder_location = data
+    # Train and test data is chosen randomly
+    sessions = read_zips_from_folder(data)
+    # sensor_data, annotations = read_data_files(sessions, ignore_files=ignore_files)
+    # tensor_data = tensor_transform(sensor_data, annotations, res_rate=25, to_exclude=to_exclude)
+    tensor_data, annotations, attributes = get_data_from_files(data, ignore_files=ignore_files,
+                                                               res_rate=25,
+                                                               to_exclude=to_exclude)
+    # mask with train_test_ratio*len(annotations) amount of ones
+    train_mask = np.zeros(len(annotations), dtype=int)
+    train_mask[:int(len(annotations) * train_test_ratio)] = 1
+    np.random.shuffle(train_mask)
+    train_mask = train_mask.astype(bool)
+
+    train_annotations = annotations[train_mask]
+    train_sensor_data = tensor_data[train_mask]
+    test_annotations = annotations[~train_mask]
+    test_sensor_data = tensor_data[~train_mask]
+
+    if ignore_files is None:
+        ann_name = "annotations.pkl"
+        sensor_name = "sensor_data.pkl"
+    else:
+        ann_name = f"annotations_ignorefiles{'_'.join(ignore_files)}.pkl"
+        sensor_name = f"sensor_data_ignorefiles{'_'.join(ignore_files)}.pkl"
+
+    os.makedirs(f'{new_folder_location}/train', exist_ok=True)
+    with open(f'{new_folder_location}/train/{ann_name}', "wb") as f:
+        pickle.dump(train_annotations, f)
+    with open(f'{new_folder_location}/train/{sensor_name}', "wb") as f:
+        pickle.dump(train_sensor_data, f)
+
+    os.makedirs(f'{new_folder_location}/test', exist_ok=True)
+    with open(f'{new_folder_location}/test/{ann_name}', "wb") as f:
+        pickle.dump(test_annotations, f)
+    with open(f'{new_folder_location}/test/{sensor_name}', "wb") as f:
+        pickle.dump(test_sensor_data, f)
