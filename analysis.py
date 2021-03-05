@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from feature_extraction import extract_df_with_features
+from feature_extraction import *
 from feature_selection import select_features
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import *
@@ -15,18 +15,20 @@ from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.tree import DecisionTreeClassifier
 
 
 def get_models():
     models = dict()
-    models['SVC'] = SVC()
+    # models['SVC'] = SVC()
     models['KNC'] = KNeighborsClassifier()
     models['NB'] = GaussianNB()
     models['RFC'] = RandomForestClassifier()
     models['GBC'] = GradientBoostingClassifier()
     models['KNC'] = KNeighborsClassifier()
-    models['DTC'] = DecisionTreeClassifier()
+    # models['DTC'] = DecisionTreeClassifier()
 
     return models
 
@@ -73,8 +75,9 @@ def train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test):
     y_pred = model.predict(X_test)
     score_acc = accuracy_score(y_test, y_pred)
     score_f1 = f1_score(y_test, y_pred)
+    score_roc = roc_auc_score(y_test, y_pred)
     # plot_confusion_matrix(y_test, y_pred, score_f1, model_name)
-    return score_acc, score_f1
+    return score_acc, score_f1, score_roc
 
 
 def plot_confusion_matrix(y_test, y_pred, score, model_name):
@@ -148,15 +151,21 @@ if __name__ == "__main__":
     X = tensor_data
     y = annotations.reset_index(drop=True)
     X = extract_df_with_features(X, y, attributes, target_classes, data_folder)
+    # X = extract_basic_features(X, y, attributes)
     y_target = y['mistake']
     X_ids = X['recordingID']
     X = X.drop(['recordingID', 'mistake'], axis=1)
+
+    # select the features with feature selection
     selected_features = select_features(X, y_target, 0.01, attributes, data_folder)
     for f in selected_features:
         if not f in X.columns.values:
             selected_features = selected_features.drop(f)
     X = X[selected_features]
+
+    # add duration as a feature
     X.loc[:, 'duration'] = y.loc[:, 'duration']
+
     users_all = X_ids.unique()
 
     if len(users_all) > 1:
@@ -186,17 +195,51 @@ if __name__ == "__main__":
             for name, model in models.items():
                 # params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
                 params = define_params(model)
-                score_acc, score_f1 = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
-                result_tuple = (score_acc, score_f1)
+                score_acc, score_f1, score_roc = train_and_evaluate_model(model, params, X_train, y_train, X_test,
+                                                                          y_test)
+                result_tuple = (score_acc, score_f1, score_roc)
                 classifiers = set_classifiers(model, models, params)
                 resultsRow[name + '_acc'] = np.mean(score_acc)
                 resultsRow[name + '_f1'] = np.mean(score_f1)
+                resultsRow[name + '_roc-auc'] = np.mean(score_roc)
             dfResults = dfResults.append(resultsRow, ignore_index=True)
 
         print("\nSummary of the results:\n")
-        print(dfResults.mean().sort_values(ascending=False))
+        # print(dfResults.mean().sort_values(ascending=False))
+        print("\nMean Accuracy score: " + str(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean()))
+        print("Mean F1 score: " + str(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean()))
+        print("Mean ROC-AUC score: " + str(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean()))
     else:
         print("You need at least 2 sessions.")
+
+
+
+    # Plot the principal components (PCA)
+    dfX = X
+    dfY = y_target.values
+    dfX = StandardScaler().fit_transform(dfX)
+    pca = PCA(n_components=2)
+    principalComponents = pca.fit_transform(dfX)
+    principalDf = pd.DataFrame(data=principalComponents, columns=['principal component 1', 'principal component 2'])
+    finalDf = pd.concat([principalDf, y_target], axis=1)
+    #finalDf['duration'] = X['duration']
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel('principal component 1', fontsize=15)
+    ax.set_ylabel('principal component 2', fontsize=15)
+    ax.set_title('2 component PCA', fontsize=20)
+    targets = [0.0, 1.0]
+    colors = ['r', 'g']
+    for target, color in zip(targets, colors):
+        indicesToKeep = finalDf['mistake'] == target
+        ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
+                   , finalDf.loc[indicesToKeep, 'principal component 2']
+                   , c=color
+                   , s=50)
+    ax.legend(targets)
+    ax.grid()
+    plt.show()
+
     # split the dataset between train and test
     # _train, y_train, X_test, y_test = data_helper.split_data_train_test(tensor_data, annotations,
     #                                                                     train_test_ratio=0.95, random_shuffling=False)
@@ -271,3 +314,7 @@ if __name__ == "__main__":
     # plt.show()
     #
     # ROC_curve(classifiers)
+
+
+
+

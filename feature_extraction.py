@@ -33,3 +33,16 @@ def extract_df_with_features(tensor, annotations, attributes, target_classes, fo
             pickle.dump(extracted_features, f)
 
     return extracted_features
+
+
+def extract_basic_features(tensor, annotations, attributes):
+    dict_functions = {'_mean' : np.mean}
+    df = pd.DataFrame()
+    for f in dict_functions:
+        attrs = list(map(lambda x: x + f, attributes))
+        values = dict_functions[f](tensor, axis=1)
+        tmp = pd.DataFrame(values, columns=attrs)
+        df = pd.concat([df, tmp], axis=1)
+    df.loc[:, 'recordingID'] = annotations['recordingID']
+    df.loc[:, 'mistake'] = annotations['mistake']
+    return df
