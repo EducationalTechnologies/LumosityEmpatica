@@ -15,7 +15,6 @@ from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.tree import DecisionTreeClassifier
 
@@ -157,14 +156,15 @@ if __name__ == "__main__":
     X = X.drop(['recordingID', 'mistake'], axis=1)
 
     # select the features with feature selection
-    selected_features = select_features(X, y_target, 0.01, attributes, data_folder)
-    for f in selected_features:
-        if not f in X.columns.values:
-            selected_features = selected_features.drop(f)
-    X = X[selected_features]
+    # selected_features = select_features(X, y_target, 0.01, attributes, data_folder)
+    # for f in selected_features:
+    #     if not f in X.columns.values:
+    #         selected_features = selected_features.drop(f)
+    # X = X[selected_features]
 
     # add duration as a feature
     X.loc[:, 'duration'] = y.loc[:, 'duration']
+    X = X.loc[:, 'duration']
 
     users_all = X_ids.unique()
 
@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
         models = get_models()
         print('\nModel training ' + ', '.join(list(models.keys())))
-        print('\nTesting with leave-one-user-out \n')
+        print('\nTesting with leave-one-session-out \n')
 
         # leave-one-out approach.
         dfResults = pd.DataFrame()
@@ -187,9 +187,13 @@ if __name__ == "__main__":
             X_test = X.loc[y_test.index.to_list()]
 
             # scale the features
-            scaler.fit(X_train)
-            X_train = scaler.transform(X_train)
-            X_test = scaler.transform(X_test)
+            if X_train.ndim < 2:
+                X_train = X_train.values.reshape(-1, 1)
+                X_test = X_test.values.reshape(-1, 1)
+            else:
+                scaler.fit(X_train)
+                X_train = scaler.transform(X_train)
+                X_test = scaler.transform(X_test)
 
             resultsRow = {"fold": fold}
             for name, model in models.items():
@@ -217,28 +221,29 @@ if __name__ == "__main__":
     # Plot the principal components (PCA)
     dfX = X
     dfY = y_target.values
-    dfX = StandardScaler().fit_transform(dfX)
-    pca = PCA(n_components=2)
-    principalComponents = pca.fit_transform(dfX)
-    principalDf = pd.DataFrame(data=principalComponents, columns=['principal component 1', 'principal component 2'])
-    finalDf = pd.concat([principalDf, y_target], axis=1)
-    #finalDf['duration'] = X['duration']
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(1, 1, 1)
-    ax.set_xlabel('principal component 1', fontsize=15)
-    ax.set_ylabel('principal component 2', fontsize=15)
-    ax.set_title('2 component PCA', fontsize=20)
-    targets = [0.0, 1.0]
-    colors = ['r', 'g']
-    for target, color in zip(targets, colors):
-        indicesToKeep = finalDf['mistake'] == target
-        ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
-                   , finalDf.loc[indicesToKeep, 'principal component 2']
-                   , c=color
-                   , s=50)
-    ax.legend(targets)
-    ax.grid()
-    plt.show()
+    if dfX.ndim > 2: # PCA makes sense only with more than 2 dimensions
+        dfX = MinMaxScaler().fit_transform(dfX)
+        pca = PCA(n_components=2)
+        principalComponents = pca.fit_transform(dfX)
+        principalDf = pd.DataFrame(data=principalComponents, columns=['principal component 1', 'principal component 2'])
+        finalDf = pd.concat([principalDf, y_target], axis=1)
+        #finalDf['duration'] = X['duration']
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_xlabel('principal component 1', fontsize=15)
+        ax.set_ylabel('principal component 2', fontsize=15)
+        ax.set_title('2 component PCA', fontsize=20)
+        targets = [0.0, 1.0]
+        colors = ['r', 'g']
+        for target, color in zip(targets, colors):
+            indicesToKeep = finalDf['mistake'] == target
+            ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
+                       , finalDf.loc[indicesToKeep, 'principal component 2']
+                       , c=color
+                       , s=50)
+        ax.legend(targets)
+        ax.grid()
+        plt.show()
 
     # split the dataset between train and test
     # _train, y_train, X_test, y_test = data_helper.split_data_train_test(tensor_data, annotations,
