@@ -8,7 +8,7 @@ import os
 def extract_df_with_features(tensor, annotations, attributes, target_classes, folder):
     folder_features = f"{folder}/features/"
     # string_attributes = '-'.join(annotations['recordingID'].unique())
-    file_features = f"{folder}/features/extracted_features_N"+str(len(annotations))+".pkl"
+    file_features = f"{folder}/features/extracted_features_N" + str(len(annotations)) + ".pkl"
     if os.path.exists(file_features):
         with open(file_features, "rb") as f:
             extracted_features = pickle.load(f)
@@ -36,7 +36,8 @@ def extract_df_with_features(tensor, annotations, attributes, target_classes, fo
 
 
 def extract_basic_features(tensor, annotations, attributes):
-    dict_functions = {'_mean' : np.mean}
+    # dict_functions = {'_mean' : np.mean}
+    dict_functions = {'_gradient': gradient_mean}
     df = pd.DataFrame()
     for f in dict_functions:
         attrs = list(map(lambda x: x + f, attributes))
@@ -46,3 +47,7 @@ def extract_basic_features(tensor, annotations, attributes):
     df.loc[:, 'recordingID'] = annotations['recordingID']
     df.loc[:, 'mistake'] = annotations['mistake']
     return df
+
+
+def gradient_mean(x, axis):
+    return np.gradient(x, axis=axis).mean(axis=axis)

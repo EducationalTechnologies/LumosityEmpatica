@@ -16,18 +16,19 @@ from imblearn.pipeline import Pipeline
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.decomposition import PCA
+from scipy.stats import norm
 from sklearn.tree import DecisionTreeClassifier
 
 
 def get_models():
     models = dict()
-    # models['SVC'] = SVC()
-    models['KNC'] = KNeighborsClassifier()
-    models['NB'] = GaussianNB()
-    models['RFC'] = RandomForestClassifier()
-    models['GBC'] = GradientBoostingClassifier()
-    models['KNC'] = KNeighborsClassifier()
-    # models['DTC'] = DecisionTreeClassifier()
+    #models['SVC'] = SVC()
+    #models['KNC'] = KNeighborsClassifier()
+    #models['NB'] = GaussianNB()
+    #models['RFC'] = RandomForestClassifier()
+    #models['GBC'] = GradientBoostingClassifier()
+    #models['KNC'] = KNeighborsClassifier()
+    models['DTC'] = DecisionTreeClassifier()
 
     return models
 
@@ -130,12 +131,45 @@ def ROC_curve(classifiers):
     plt.savefig(folder_plots + 'ROC_Curve.png', dpi=400)
     plt.show()
 
+def gaussian(x, mu, sig):
+    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+
+def plotPCA(dfX,dfY):
+    #cols = [c for c in X.columns if c.lower()[:3] == 'tmp' or c.lower()[:3] == 'gsr' or c.lower()[:3] == 'ibi']
+    #dfX = X#[cols]
+    dfY = dfY.values
+    if np.shape(dfX)[1] > 2: # PCA makes sense only with more than 2 dimensions
+        dfX = MinMaxScaler().fit_transform(dfX)
+        pca = PCA(n_components=2)
+        principalComponents = pca.fit_transform(dfX)
+        principalDf = pd.DataFrame(data=principalComponents, columns=['principal component 1','principal component 2'])
+        finalDf = pd.concat([principalDf, y_target], axis=1)
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_xlabel('principal component 1', fontsize=15)
+        ax.set_ylabel('principal component 2', fontsize=15)
+        ax.set_title('2 component PCA', fontsize=20)
+        targets = [0.0, 1.0]
+        colors = ['r', 'g']
+        for target, color in zip(targets, colors):
+            indicesToKeep = finalDf[target_class] == target
+            ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
+                       , finalDf.loc[indicesToKeep, 'principal component 2']
+                       , c=color
+                       , s=50)
+        ax.legend(targets)
+        ax.grid()
+        plt.show()
+
+
+
+
 
 if __name__ == "__main__":
     data_folder = "manual_sessions/lumosity-dataset"
     ignore_files = ['ACC']
     to_exclude = ['OenName', 'RecordingID', 'ApplicationName']
-    target_classes = ['mistake']
+    target_class = 'mistake'
     tensor_data, annotations, attributes = data_helper.get_data_from_files(data_folder, ignore_files=ignore_files,
                                                                            res_rate=25,
                                                                            to_exclude=to_exclude)
@@ -149,28 +183,41 @@ if __name__ == "__main__":
 
     X = tensor_data
     y = annotations.reset_index(drop=True)
-    X = extract_df_with_features(X, y, attributes, target_classes, data_folder)
-    # X = extract_basic_features(X, y, attributes)
-    y_target = y['mistake']
+    X = extract_df_with_features(X, y, attributes, [target_class], data_folder)
+    #X = extract_basic_features(X, y, attributes)
+    y_target = y[target_class]
     X_ids = X['recordingID']
-    X = X.drop(['recordingID', 'mistake'], axis=1)
+    X = X.drop(['recordingID', target_class], axis=1)
 
     # select the features with feature selection
-    # selected_features = select_features(X, y_target, 0.01, attributes, data_folder)
-    # for f in selected_features:
-    #     if not f in X.columns.values:
-    #         selected_features = selected_features.drop(f)
-    # X = X[selected_features]
+    selected_features = select_features(X, y_target, 0.1, attributes, data_folder)
+    for f in selected_features:
+         if not f in X.columns.values:
+             selected_features = selected_features.drop(f)
+    X = X[selected_features]
 
     # add duration as a feature
-    X.loc[:, 'duration'] = y.loc[:, 'duration']
-    X = X.loc[:, 'duration']
+    # X.loc[:, 'duration'] = y.loc[:, 'duration']
+    #X = X[['duration']]
 
+
+    y.loc[:, 'score'] = (1-y.loc[:, target_class])/y.loc[:, 'duration']
+    score_values_nozeros = y[y.score > 0].score.values
+    mu, std = norm.fit(score_values_nozeros)
+    score_values = y.score.values
+    y.loc[:, 'score_normalized'] = gaussian(score_values, mu, std)
+    y.loc[:, 'score_norm_binary'] = pd.cut(y.loc[:, 'score_normalized'],bins=2,labels=[0,1]).astype('int32')
+    # override target class
+    target_class = 'score_norm_binary'
+    y_target = y[target_class]
+    # y.score.hist(bins=50)
+    #plt.ylabel('Frequency')
+    #plt.xlabel('Score = (1-mistake)/duration')
+    #plt.show()
     users_all = X_ids.unique()
 
     if len(users_all) > 1:
         scaler = MinMaxScaler()
-
         models = get_models()
         print('\nModel training ' + ', '.join(list(models.keys())))
         print('\nTesting with leave-one-session-out \n')
@@ -181,8 +228,8 @@ if __name__ == "__main__":
             print('- testing on fold: ' + fold)
             users_held = [fold]
             users_left = list(set(users_all) - set(users_held))
-            y_train = y[y['recordingID'].isin(users_left)]['mistake']
-            y_test = y[y['recordingID'].isin(users_held)]['mistake']
+            y_train = y[y['recordingID'].isin(users_left)][target_class]
+            y_test = y[y['recordingID'].isin(users_held)][target_class]
             X_train = X.loc[y_train.index.to_list()]
             X_test = X.loc[y_test.index.to_list()]
 
@@ -216,110 +263,5 @@ if __name__ == "__main__":
     else:
         print("You need at least 2 sessions.")
 
-
-
-    # Plot the principal components (PCA)
-    dfX = X
-    dfY = y_target.values
-    if dfX.ndim > 2: # PCA makes sense only with more than 2 dimensions
-        dfX = MinMaxScaler().fit_transform(dfX)
-        pca = PCA(n_components=2)
-        principalComponents = pca.fit_transform(dfX)
-        principalDf = pd.DataFrame(data=principalComponents, columns=['principal component 1', 'principal component 2'])
-        finalDf = pd.concat([principalDf, y_target], axis=1)
-        #finalDf['duration'] = X['duration']
-        fig = plt.figure(figsize=(8, 8))
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_xlabel('principal component 1', fontsize=15)
-        ax.set_ylabel('principal component 2', fontsize=15)
-        ax.set_title('2 component PCA', fontsize=20)
-        targets = [0.0, 1.0]
-        colors = ['r', 'g']
-        for target, color in zip(targets, colors):
-            indicesToKeep = finalDf['mistake'] == target
-            ax.scatter(finalDf.loc[indicesToKeep, 'principal component 1']
-                       , finalDf.loc[indicesToKeep, 'principal component 2']
-                       , c=color
-                       , s=50)
-        ax.legend(targets)
-        ax.grid()
-        plt.show()
-
-    # split the dataset between train and test
-    # _train, y_train, X_test, y_test = data_helper.split_data_train_test(tensor_data, annotations,
-    #                                                                     train_test_ratio=0.95, random_shuffling=False)
-    # feature extraction both on the training set and the test set
-    # X_train = extract_df_with_features(X_train, y_train, attributes, target_classes, data_folder)
-    # X_test = extract_df_with_features(X_test, y_test, attributes, target_classes, data_folder)
-    # X_train = X_train.drop(['recordingID'], axis=1)
-    # X_test = X_test.drop(['recordingID'], axis=1)
-
-    # y_train_target = y_train['mistake'].reset_index(drop=True)
-
-    # feature are selected ONLY in the training set
-    # selected_features = select_features(X_train, y_train_target, 0.25, attributes,
-    #                                    data_folder)  # take only 5% of the best features n=~100
-    # check if the selected attributes are in index otherwise drop them
-    # for f in selected_features:
-    #    if not f in X_train.columns.values or not f in X_test.columns.values:
-    #        selected_features = selected_features.drop(f)
-    # X_train = X_train[selected_features]
-    # X_test = X_test[selected_features]
-    # print(selected_features)
-
-    # add feature duration of the annotation
-    # X_train.loc[:, 'duration'] = y_train.loc[:, 'duration'].reset_index(drop=True)
-    # X_test.loc[:, 'duration'] = y_test.loc[:, 'duration'].reset_index(drop=True)
-
-    # set target and reset index
-    # y_train = y_train['mistake'].reset_index(drop=True)
-    # y_test = y_test['mistake'].reset_index(drop=True)
-
-    # scale data
-    # Normalize/Scale only on train data, use the same scaler for test data
-    # scaler = MinMaxScaler()
-    # scaler.fit(X_train)
-    # X_train = scaler.transform(X_train)
-    # X_test = scaler.transform(X_test)
-
-    # model training
-    # models = get_models()
-    # evaluate the models and store results
-    # results, names = list(), list()
-
-    # for name, model in models.items():
-    #     # params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
-    #     params = define_params(model)
-    #     score_acc, score_f1 = train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test)
-    #     result_tuple = (score_acc, score_f1)
-    #     results.append(result_tuple)
-    #     classifiers = set_classifiers(model, models, params)
-    #     names.append(name)
-    #     print('mean(score_acc): ', np.mean(score_acc), ', std(score_acc):', np.std(score_acc))
-    #     print('mean(score_f1): ', np.mean(score_f1), ', std(score_f1):', np.std(score_f1))
-    #
-    # for j in results:
-    #     acc_score_list = []
-    #     acc_score_list.append(j[0])
-    # plt.xticks(fontsize=10)
-    # plt.bar(names, acc_score_list)
-    # plt.ylim(0, 1)
-    # plt.title('Accuracy score', fontsize=10)
-    # plt.savefig(folder_plots + 'acc_score_models_comparing.png')
-    # plt.show()
-    #
-    # for j in results:
-    #     f1_score_list = []
-    #     f1_score_list.append(j[1])
-    # plt.xticks(fontsize=10)
-    # plt.bar(names, f1_score_list)
-    # plt.ylim(0, 1)
-    # plt.title('F-1 score', fontsize=10)
-    # plt.savefig(folder_plots + 'f1_score_models_comparing.png')
-    # plt.show()
-    #
-    # ROC_curve(classifiers)
-
-
-
+    plotPCA(X, y)
 
