@@ -4,6 +4,11 @@ import data_helper
 import os
 import pomegranate as pg
 from scipy.stats import norm
+from feature_extraction import *
+from feature_selection import select_features
+from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 
 def gaussian(x, mu, sig):
     return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
@@ -27,15 +32,26 @@ if __name__ == "__main__":
     X = tensor_data
     y = annotations.reset_index(drop=True)
 
-    df = y.copy()
 
-    df['bvp'] = np.mean(tensor_data[:, :, 0], axis=1)
-    df['gsr'] = np.mean(tensor_data[:, :, 1], axis=1)
-    df['hrv'] = np.mean(tensor_data[:, :, 2], axis=1)
-    df['ibi'] = np.mean(tensor_data[:, :, 3], axis=1)
-    df['tmp'] = np.mean(tensor_data[:, :, 4], axis=1)
+    X = extract_df_with_features(X, y, attributes, [target_class], data_folder)
+    # X = extract_basic_features(X, y, attributes)
+    y_target = y[target_class]
+    X_ids = X['recordingID']
+    X = X.drop(['recordingID', target_class], axis=1)
 
-    observations = df[attributes].values
+    # select the features with feature selection
+    selected_features = select_features(X, y_target, 0.01, attributes, data_folder)     # doesn't work with 10% = (0.1)
+    for f in selected_features:
+        if not f in X.columns.values:
+            selected_features = selected_features.drop(f)
+    X = X[selected_features]
+    print("Number of selected features:", len(selected_features))
+
+
+    # add duration as a feature
+    print("Duration was added into features")
+    X['duration'] = y['duration']
+    # X = X[['duration']]                                               # only duration as feature
 
     y.loc[:, 'score'] = (1 - y.loc[:, target_class]) / y.loc[:, 'duration']
     score_values_nozeros = y[y.score > 0].score.values
@@ -46,72 +62,79 @@ if __name__ == "__main__":
     # override target class
     target_class = 'score_norm_binary'
     target = y[target_class].astype('int32').values
+    y.score.hist(bins=50)
+    plt.ylabel('Frequency')
+    plt.xlabel('Score = (1-mistake)/duration')
+    #plt.show()
 
-    X = np.expand_dims(observations, axis=0)
-    labels = np.expand_dims(target, axis=0)
 
-    print("Shape of X:", X.shape)
+    users_all = X_ids.unique()
+    if len(users_all) > 1:
+        scaler = MinMaxScaler()
+        #print('\nTesting with leave-one-session-out \n')
+        # leave-one-out approach.
+        dfResults = pd.DataFrame()
+        for fold in users_all:
+            #print('- testing on fold: ' + fold)
+            users_held = [fold]
+            users_left = list(set(users_all) - set(users_held))
+            y_train = y[y['recordingID'].isin(users_left)][target_class]
+            y_test = y[y['recordingID'].isin(users_held)][target_class]
+            X_train = X.loc[y_train.index.to_list()]
+            X_test = X.loc[y_test.index.to_list()]
+            # scale the features
+            if X_train.ndim < 2:
+                X_train = X_train.values.reshape(-1, 1)
+                X_test = X_test.values.reshape(-1, 1)
+            else:
+                scaler.fit(X_train)
+                X_train = scaler.transform(X_train)
+                X_test = scaler.transform(X_test)
+
+
+
+    X_train = np.expand_dims(X_train, axis=0)
+    labels = np.expand_dims(y_train, axis=0)
+
+    print("Shape of X_train:", X_train.shape)
     print("Shape of labels:", labels.shape)
 
 
     model = pg.HiddenMarkovModel.from_samples(pg.MultivariateGaussianDistribution,
-                                            n_components=len(np.unique(labels)),
-                                            X=X,
-                                            labels=labels,
-                                            algorithm='labeled')
+                                              n_components=len(np.unique(labels)),
+                                              X=X_train,
+                                              labels=labels,
+                                              algorithm = 'labeled')
 
-    test = np.array([[[0.1370942, 65.08173, 0.9219177, 30.369999999999994],
-                    [0.14720542857142857, 65.08173, 0.9219177, 30.369999999999994],
-                    [0.1370942, 76.64283057142856, 0.7942332199999999, 30.369999999999994]]])
-    test_y = np.array([[1,0,0]])
+    #X_test = np.expand_dims(X_test, axis=0)
+    #y_test = np.expand_dims(y_test, axis=0)
 
-    # print("viterbi:",model.viterbi(test))
-    # print("maximum_a_posteriori:", model.maximum_a_posteriori(test))
-    # print("predict_proba:", model.predict_proba(test))
-    print("Dense transition matrix:", model.dense_transition_matrix())
-    print("Emission and transition matrix:", model.forward_backward(test))
-    print("Number of states:", model.state_count())
-    print("Log probability:", model.log_probability(test))
-    print("Predicted test:", model.predict(test))
-    print("Score:", model.score(test, test_y))
+    print(" ")
+    print("Shape of X_test:", X_test.shape)
+    print("Shape of y_test:", y_test.shape)
 
-
-
-
-    # uniqueId = df["recordingID"].unique()
-    # observations = []
-    # mistakes = []
-    # mistakes_partcp = []
-    # for id_ in uniqueId:
-    #     df_part = df.loc[df['recordingID'] == id_]
-    #     mistake = df_part['mistake']
-    #     mistake_list = []
-    #     participant = [df_part['gsr'], df_part['bvp'], df_part['ibi'], df_part['tmp']]
-    #     values = []
-    #     for column in participant:
-    #         columns = []
-    #         for value in column:
-    #             columns.append(value)
-    #         values.append(columns)
-    #     observations.append(values)
-    #     for value in mistake:
-    #         mistakes.append(value)                  # mistakes = [mistakes_1_to_1927]
-    #
-    # end_list = []
-    # for partc in observations:
-    #     for a in range(len(partc[0])):
-    #         temp = []
-    #         for b in range(len(observations[0])):
-    #             temp.append(partc[b][a])
-    #         end_list.append(temp)
-    # observations = end_list                 #[[GSR_1,BVP_1,IBI_1,TMP_1],...[GSR_1997,BVP_1927,IBI_1991,TMP_1927]]
+    # print("viterbi:",model.viterbi(X_test))
+    # print("maximum_a_posteriori:", model.maximum_a_posteriori(X_test))
+    # print("predict_proba:", model.predict_proba(X_test))
+    print("Dense transition matrix:")
+    print(model.dense_transition_matrix())
+    print("Emission and transition matrix:")
+    print(model.forward_backward(X_test))
+    print("Log probability:", model.log_probability(X_test))
+    print("Number of states:", model.state_count())                 # Start, 1, 0, End
+    y_pred = model.predict(X_test)
+    print("Score:", model.score(X_test, y_test))
+    # print("y_pred:", y_pred)
+    # print("y_test:", y_test.values)
 
 
 
-    #X = np.array([np.array(x) for x in observations], dtype=object)
-    #labels = np.array(mistakes)
+    # parameters are not like in analysis.py: 'score = model.score(y_pred, y_test))'
+    # score() Return the accuracy of the model on a data set.
+    # Parameters:
+    # X[numpy.ndarray, shape=(n, d)] The values of the data set
+    # y[numpy.ndarray, shape=(n,)] The labels of each value
 
-    #X = np.expand_dims(X, axis=0)
 
 
 
