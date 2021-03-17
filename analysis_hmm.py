@@ -7,6 +7,7 @@ from scipy.stats import norm
 from feature_extraction import *
 from feature_selection import select_features
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import *
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     X = X.drop(['recordingID', target_class], axis=1)
 
     # select the features with feature selection
-    selected_features = select_features(X, y_target, 0.01, attributes, data_folder)     # doesn't work with 10% = (0.1)
+    selected_features = select_features(X, y_target, 0.05, attributes, data_folder)     # doesn't work with 10% = (0.1)
     for f in selected_features:
         if not f in X.columns.values:
             selected_features = selected_features.drop(f)
@@ -51,33 +52,30 @@ if __name__ == "__main__":
     # add duration as a feature
     print("Duration was added into features")
     X['duration'] = y['duration']
-    # X = X[['duration']]                                               # only duration as feature
+    # X = X[['duration']]  # only duration as feature
 
     y.loc[:, 'score'] = (1 - y.loc[:, target_class]) / y.loc[:, 'duration']
     score_values_nozeros = y[y.score > 0].score.values
     mu, std = norm.fit(score_values_nozeros)
     score_values = y.score.values
     y.loc[:, 'score_normalized'] = gaussian(score_values, mu, std)
-    y.loc[:, 'score_norm_binary'] = pd.cut(y.loc[:, 'score_normalized'], bins=2, labels=[0, 1]).astype('int32')
+    y.loc[:, 'score_norm_binary'] = pd.cut(y.loc[:, 'score_normalized'], bins=2, labels=[0,1])
     # override target class
     target_class = 'score_norm_binary'
     target = y[target_class].astype('int32').values
-    y.score.hist(bins=50)
-    plt.ylabel('Frequency')
-    plt.xlabel('Score = (1-mistake)/duration')
-    #plt.show()
 
+    sessions_all = X_ids.unique()
 
-    users_all = X_ids.unique()
-    if len(users_all) > 1:
+    dfResults = pd.DataFrame()
+    if len(sessions_all) > 1:
         scaler = MinMaxScaler()
-        #print('\nTesting with leave-one-session-out \n')
+        print('\nTesting with leave-one-session-out \n')
         # leave-one-out approach.
         dfResults = pd.DataFrame()
-        for fold in users_all:
-            #print('- testing on fold: ' + fold)
+        for fold in sessions_all:
+            print('- testing on fold: ' + fold)
             users_held = [fold]
-            users_left = list(set(users_all) - set(users_held))
+            users_left = list(set(sessions_all) - set(users_held))
             y_train = y[y['recordingID'].isin(users_left)][target_class]
             y_test = y[y['recordingID'].isin(users_held)][target_class]
             X_train = X.loc[y_train.index.to_list()]
@@ -91,43 +89,52 @@ if __name__ == "__main__":
                 X_train = scaler.transform(X_train)
                 X_test = scaler.transform(X_test)
 
+            resultsRow = {"fold": fold}
+            X_train = np.expand_dims(X_train, axis=0)
+            labels = np.expand_dims(y_train, axis=0)
+            n_components = len(np.unique(labels))
 
+            model = pg.HiddenMarkovModel.from_samples(pg.MultivariateGaussianDistribution,
+                                                      n_components=n_components,
+                                                      X=X_train,
+                                                      labels=labels,
+                                                      algorithm='labeled')
 
-    X_train = np.expand_dims(X_train, axis=0)
-    labels = np.expand_dims(y_train, axis=0)
+            y_pred = model.predict(X_test)
+            resultsRow['HMM_acc'] = accuracy_score(y_test, y_pred)
+            # accuracy_score(y_test, y_pred) is the same as model.score(X_test, y_test))
+            resultsRow['HMM_f1'] = f1_score(y_test, y_pred)
+            resultsRow['HMM_roc-auc'] = roc_auc_score(y_test, y_pred)
+            dfResults = dfResults.append(resultsRow, ignore_index=True)
 
-    print("Shape of X_train:", X_train.shape)
-    print("Shape of labels:", labels.shape)
-
-
-    model = pg.HiddenMarkovModel.from_samples(pg.MultivariateGaussianDistribution,
-                                              n_components=len(np.unique(labels)),
-                                              X=X_train,
-                                              labels=labels,
-                                              algorithm = 'labeled')
+        print("\nSummary of the results:")
+        mean_acc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean())
+        mean_f1 = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean())
+        mean_roc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean())
+        print("\nMean Accuracy score: " + mean_acc)
+        print("Mean F1 score: " + mean_f1)
+        print("Mean ROC-AUC score: " + mean_roc)
 
     #X_test = np.expand_dims(X_test, axis=0)
     #y_test = np.expand_dims(y_test, axis=0)
 
-    print(" ")
-    print("Shape of X_test:", X_test.shape)
-    print("Shape of y_test:", y_test.shape)
+    #print(" ")
+    #print("Shape of X_test:", X_test.shape)
+    #print("Shape of y_test:", y_test.shape)
 
     # print("viterbi:",model.viterbi(X_test))
     # print("maximum_a_posteriori:", model.maximum_a_posteriori(X_test))
     # print("predict_proba:", model.predict_proba(X_test))
-    print("Dense transition matrix:")
-    print(model.dense_transition_matrix())
-    print("Emission and transition matrix:")
-    print(model.forward_backward(X_test))
-    print("Log probability:", model.log_probability(X_test))
-    print("Number of states:", model.state_count())                 # Start, 1, 0, End
-    y_pred = model.predict(X_test)
-    print("Score:", model.score(X_test, y_test))
+    #print("Dense transition matrix:")
+    #print(model.dense_transition_matrix())
+    #print("Emission and transition matrix:")
+    #print(model.forward_backward(X_test))
+    #print("Log probability:", model.log_probability(X_test))
+    #print("Number of states:", model.state_count())                 # Start, 1, 0, End
+    #y_pred = model.predict(X_test)
+    #print("Score:", model.score(X_test, y_test))
     # print("y_pred:", y_pred)
     # print("y_test:", y_test.values)
-
-
 
     # parameters are not like in analysis.py: 'score = model.score(y_pred, y_test))'
     # score() Return the accuracy of the model on a data set.

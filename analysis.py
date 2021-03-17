@@ -23,12 +23,11 @@ from sklearn.tree import DecisionTreeClassifier
 def get_models():
     models = dict()
     #models['SVC'] = SVC()
-    #models['KNC'] = KNeighborsClassifier()
     #models['NB'] = GaussianNB()
-    #models['RFC'] = RandomForestClassifier()
+    models['RFC'] = RandomForestClassifier()
     #models['GBC'] = GradientBoostingClassifier()
     #models['KNC'] = KNeighborsClassifier()
-    models['DTC'] = DecisionTreeClassifier()
+    #models['DTC'] = DecisionTreeClassifier()
 
     return models
 
@@ -190,7 +189,7 @@ if __name__ == "__main__":
     X = X.drop(['recordingID', target_class], axis=1)
 
     # select the features with feature selection
-    selected_features = select_features(X, y_target, 0.1, attributes, data_folder)
+    selected_features = select_features(X, y_target, 0.05, attributes, data_folder)
     for f in selected_features:
          if not f in X.columns.values:
              selected_features = selected_features.drop(f)
@@ -257,9 +256,13 @@ if __name__ == "__main__":
 
         print("\nSummary of the results:\n")
         # print(dfResults.mean().sort_values(ascending=False))
-        print("\nMean Accuracy score: " + str(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean()))
-        print("Mean F1 score: " + str(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean()))
-        print("Mean ROC-AUC score: " + str(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean()))
+
+        mean_acc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean())
+        mean_f1 = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean())
+        mean_roc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean())
+        print("\nMean Accuracy score: " + mean_acc)
+        print("Mean F1 score: " + mean_f1)
+        print("Mean ROC-AUC score: " + mean_roc)
     else:
         print("You need at least 2 sessions.")
 
