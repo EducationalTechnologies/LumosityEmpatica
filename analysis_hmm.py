@@ -10,6 +10,8 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import *
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from collections import Counter
+from imblearn.over_sampling import SMOTE
 
 def gaussian(x, mu, sig):
     return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
@@ -41,7 +43,7 @@ if __name__ == "__main__":
     X = X.drop(['recordingID', target_class], axis=1)
 
     # select the features with feature selection
-    selected_features = select_features(X, y_target, 0.05, attributes, data_folder)     # doesn't work with 10% = (0.1)
+    selected_features = select_features(X, y_target, 0.01, attributes, data_folder)     # doesn't work with 10% = (0.1)
     for f in selected_features:
         if not f in X.columns.values:
             selected_features = selected_features.drop(f)
@@ -50,8 +52,7 @@ if __name__ == "__main__":
 
 
     # add duration as a feature
-    print("Duration was added into features")
-    X['duration'] = y['duration']
+    #X['duration'] = y['duration']
     # X = X[['duration']]  # only duration as feature
 
     y.loc[:, 'score'] = (1 - y.loc[:, target_class]) / y.loc[:, 'duration']
@@ -89,6 +90,11 @@ if __name__ == "__main__":
                 X_train = scaler.transform(X_train)
                 X_test = scaler.transform(X_test)
 
+                # print(Counter(y_train))
+                sampler = SMOTE(sampling_strategy='minority')
+                X_train, y_train = sampler.fit_sample(X_train, y_train)
+                # print(Counter(y_train))
+
             resultsRow = {"fold": fold}
             X_train = np.expand_dims(X_train, axis=0)
             labels = np.expand_dims(y_train, axis=0)
@@ -114,33 +120,6 @@ if __name__ == "__main__":
         print("\nMean Accuracy score: " + mean_acc)
         print("Mean F1 score: " + mean_f1)
         print("Mean ROC-AUC score: " + mean_roc)
-
-    #X_test = np.expand_dims(X_test, axis=0)
-    #y_test = np.expand_dims(y_test, axis=0)
-
-    #print(" ")
-    #print("Shape of X_test:", X_test.shape)
-    #print("Shape of y_test:", y_test.shape)
-
-    # print("viterbi:",model.viterbi(X_test))
-    # print("maximum_a_posteriori:", model.maximum_a_posteriori(X_test))
-    # print("predict_proba:", model.predict_proba(X_test))
-    #print("Dense transition matrix:")
-    #print(model.dense_transition_matrix())
-    #print("Emission and transition matrix:")
-    #print(model.forward_backward(X_test))
-    #print("Log probability:", model.log_probability(X_test))
-    #print("Number of states:", model.state_count())                 # Start, 1, 0, End
-    #y_pred = model.predict(X_test)
-    #print("Score:", model.score(X_test, y_test))
-    # print("y_pred:", y_pred)
-    # print("y_test:", y_test.values)
-
-    # parameters are not like in analysis.py: 'score = model.score(y_pred, y_test))'
-    # score() Return the accuracy of the model on a data set.
-    # Parameters:
-    # X[numpy.ndarray, shape=(n, d)] The values of the data set
-    # y[numpy.ndarray, shape=(n,)] The labels of each value
 
 
 
