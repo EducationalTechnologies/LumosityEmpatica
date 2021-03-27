@@ -62,7 +62,8 @@ if __name__ == "__main__":
     y.loc[:, 'score_normalized'] = gaussian(score_values, mu, std)
     y.loc[:, 'score_norm_binary'] = pd.cut(y.loc[:, 'score_normalized'], bins=2, labels=[0,1])
     # override target class
-    target_class = 'score_norm_binary'
+    #target_class = 'score_norm_binary'
+    y[target_class] = y[target_class].replace(to_replace=[1, 0], value=[0, 1])
     target = y[target_class].astype('int32').values
 
     sessions_all = X_ids.unique()
@@ -109,17 +110,23 @@ if __name__ == "__main__":
             y_pred = model.predict(X_test)
             resultsRow['HMM_acc'] = accuracy_score(y_test, y_pred)
             # accuracy_score(y_test, y_pred) is the same as model.score(X_test, y_test))
+            resultsRow['HMM_precision'] = precision_score(y_test, y_pred)
             resultsRow['HMM_f1'] = f1_score(y_test, y_pred)
+            resultsRow['HMM_recall'] = recall_score(y_test, y_pred)
             resultsRow['HMM_roc-auc'] = roc_auc_score(y_test, y_pred)
             dfResults = dfResults.append(resultsRow, ignore_index=True)
 
         print("\nSummary of the results:")
         mean_acc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean())
+        mean_precision = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('precision')].mean().mean())
+        mean_recall = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('recall')].mean().mean())
         mean_f1 = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean())
         mean_roc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean())
         print("\nMean Accuracy score: " + mean_acc)
+        print("Mean Precision score: " + mean_precision)
+        print("Mean Recall score: " + mean_recall)
         print("Mean F1 score: " + mean_f1)
-        print("Mean ROC-AUC score: " + mean_roc)
+        #print("Mean ROC-AUC score: " + mean_roc)
 
 
 

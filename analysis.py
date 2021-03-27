@@ -22,12 +22,12 @@ from sklearn.tree import DecisionTreeClassifier
 
 def get_models():
     models = dict()
-    #models['SVC'] = SVC()
-    #models['NB'] = GaussianNB()
+    models['SVC'] = SVC()
+    models['NB'] = GaussianNB()
     models['RFC'] = RandomForestClassifier()
-    #models['GBC'] = GradientBoostingClassifier()
-    #models['KNC'] = KNeighborsClassifier()
-    #models['DTC'] = DecisionTreeClassifier()
+    models['GBC'] = GradientBoostingClassifier()
+    models['KNC'] = KNeighborsClassifier()
+    models['DTC'] = DecisionTreeClassifier()
 
     return models
 
@@ -73,10 +73,12 @@ def train_and_evaluate_model(model, params, X_train, y_train, X_test, y_test):
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     score_acc = accuracy_score(y_test, y_pred)
+    score_precision = precision_score(y_test, y_pred)
+    score_recall = recall_score(y_test, y_pred)
     score_f1 = f1_score(y_test, y_pred)
     score_roc = roc_auc_score(y_test, y_pred)
     # plot_confusion_matrix(y_test, y_pred, score_f1, model_name)
-    return score_acc, score_f1, score_roc
+    return score_acc, score_precision, score_recall, score_f1, score_roc
 
 
 def plot_confusion_matrix(y_test, y_pred, score, model_name):
@@ -134,6 +136,10 @@ def gaussian(x, mu, sig):
     return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
 
 def plotPCA(dfX,dfY):
+    """
+
+    :rtype: object
+    """
     #cols = [c for c in X.columns if c.lower()[:3] == 'tmp' or c.lower()[:3] == 'gsr' or c.lower()[:3] == 'ibi']
     #dfX = X#[cols]
     dfY = dfY.values
@@ -189,7 +195,7 @@ if __name__ == "__main__":
     X = X.drop(['recordingID', target_class], axis=1)
 
     # select the features with feature selection
-    selected_features = select_features(X, y_target, 0.05, attributes, data_folder)
+    selected_features = select_features(X, y_target, 0.025, attributes, data_folder)
     for f in selected_features:
          if not f in X.columns.values:
              selected_features = selected_features.drop(f)
@@ -207,7 +213,8 @@ if __name__ == "__main__":
     y.loc[:, 'score_normalized'] = gaussian(score_values, mu, std)
     y.loc[:, 'score_norm_binary'] = pd.cut(y.loc[:, 'score_normalized'],bins=2,labels=[0,1]).astype('int32')
     # override target class
-    target_class = 'score_norm_binary'
+    #target_class = 'score_norm_binary'
+    y[target_class] = y[target_class].replace(to_replace=[1, 0], value=[0, 1])
     y_target = y[target_class]
     # y.score.hist(bins=50)
     #plt.ylabel('Frequency')
@@ -245,11 +252,13 @@ if __name__ == "__main__":
             for name, model in models.items():
                 # params = grid_search.grid_search(model, X_train, y_train, X_test, y_test)
                 params = define_params(model)
-                score_acc, score_f1, score_roc = train_and_evaluate_model(model, params, X_train, y_train, X_test,
+                score_acc, score_precision, score_recall, score_f1, score_roc = train_and_evaluate_model(model, params, X_train, y_train, X_test,
                                                                           y_test)
                 result_tuple = (score_acc, score_f1, score_roc)
                 classifiers = set_classifiers(model, models, params)
                 resultsRow[name + '_acc'] = np.mean(score_acc)
+                resultsRow[name + '_precision'] = np.mean(score_precision)
+                resultsRow[name + '_recall'] = np.mean(score_recall)
                 resultsRow[name + '_f1'] = np.mean(score_f1)
                 resultsRow[name + '_roc-auc'] = np.mean(score_roc)
             dfResults = dfResults.append(resultsRow, ignore_index=True)
@@ -257,14 +266,21 @@ if __name__ == "__main__":
         print("\nSummary of the results:\n")
         # print(dfResults.mean().sort_values(ascending=False))
 
+        print("\nSummary of the results:")
         mean_acc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('acc')].mean().mean())
+        mean_precision = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('precision')].mean().mean())
+        mean_recall = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('recall')].mean().mean())
         mean_f1 = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('f1')].mean().mean())
         mean_roc = '{0:.3g}'.format(dfResults.loc[:, dfResults.columns.str.contains('roc')].mean().mean())
         print("\nMean Accuracy score: " + mean_acc)
+        print("Mean Precision score: " + mean_precision)
+        print("Mean Recall score: " + mean_recall)
         print("Mean F1 score: " + mean_f1)
-        print("Mean ROC-AUC score: " + mean_roc)
     else:
         print("You need at least 2 sessions.")
+    #plotPCA(X, y)
 
-    plotPCA(X, y)
-
+dfResults.loc[:, dfResults.columns.str.contains('_acc')].mean().round(decimals=3)
+dfResults.loc[:, dfResults.columns.str.contains('_pre')].mean().round(decimals=3)
+dfResults.loc[:, dfResults.columns.str.contains('_rec')].mean().round(decimals=3)
+dfResults.loc[:, dfResults.columns.str.contains('_f1')].mean().round(decimals=3)
